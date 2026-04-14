@@ -132,7 +132,7 @@ func (c *Client) Fetch(ctx context.Context, u string) (jwk.Set, error) {
 	if err != nil {
 		return nil, fmt.Errorf(`jwkfetch.Client.Fetch: request failed: %w`, err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf(`jwkfetch.Client.Fetch: request returned status %d, expected 200`, res.StatusCode)
