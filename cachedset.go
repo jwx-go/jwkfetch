@@ -123,9 +123,13 @@ func (cs *cachedSet) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return set.(interface{ MarshalJSON() ([]byte, error) }).MarshalJSON()
+	m, ok := set.(interface{ MarshalJSON() ([]byte, error) })
+	if !ok {
+		return nil, fmt.Errorf(`jwkfetch.CachedSet: underlying set does not implement MarshalJSON`)
+	}
+	return m.MarshalJSON()
 }
 
-func (cs *cachedSet) UnmarshalJSON(data []byte) error {
+func (cs *cachedSet) UnmarshalJSON(_ []byte) error {
 	return fmt.Errorf(`jwkfetch.CachedSet is immutable`)
 }
