@@ -26,16 +26,13 @@ type clientOption struct{ Option }
 func (*clientOption) clientOption() {}
 
 // CacheOption is passed to NewCache. Options that configure HTTP
-// fetch policy satisfy CacheOption; per-URL knobs like WithWaitReady
-// do NOT (they are RegisterOption values passed to Cache.Register).
+// fetch policy satisfy CacheOption via GlobalFetchOption; per-URL
+// knobs like WithWaitReady do NOT (they are RegisterOption values
+// passed to Cache.Register).
 type CacheOption interface {
 	Option
 	cacheOption()
 }
-
-type cacheOption struct{ Option }
-
-func (*cacheOption) cacheOption() {}
 
 // GlobalFetchOption is an option that configures HTTP fetch policy
 // and applies to both Client and Cache construction. Values returned
