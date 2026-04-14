@@ -1,0 +1,9 @@
+Changes
+=======
+
+v4.0.0-alpha2 13 Apr 2026
+  * Compatibility release for jwx/v4 v4.0.0-scratch.15. No code changes.
+  * Doc fix: package example now shows side-effect import.
+
+v4.0.0-alpha1 8 Apr 2026
+  * Initial version, extracted from github.com/lestrrat-go/jwx/v4/jwk.
