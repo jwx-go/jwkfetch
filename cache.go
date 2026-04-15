@@ -41,6 +41,13 @@ import (
 // at the Transport layer, serve the JWKS over a channel whose
 // endpoint you trust end-to-end, or use Client with a restrictive
 // Whitelist instead.
+//
+// Error messages produced by Cache — including those surfaced
+// through the httprc.ErrorSink configured on its underlying client
+// — include registered URLs verbatim. Sanitize URLs before passing
+// them to Register, Fetch, Lookup, Refresh, or Unregister if they
+// contain credentials in userinfo or query strings that must not
+// appear in logs. See the package doc for the full statement.
 type Cache struct {
 	httpClient   HTTPClient
 	maxBodySize  int64
@@ -140,6 +147,10 @@ func (c *Cache) Register(ctx context.Context, u string, options ...RegisterOptio
 // Fetch implements jwk.Fetcher. It returns the cached jwk.Set for u,
 // or an error if u has not been registered. Register the URL via
 // Cache.Register before calling Fetch.
+//
+// As with Client.Fetch, error messages include u verbatim so callers
+// can identify which URL failed; see the Cache and package docs for
+// caller-responsibility details on URL sanitization.
 func (c *Cache) Fetch(ctx context.Context, u string) (jwk.Set, error) {
 	if !c.IsRegistered(ctx, u) {
 		return nil, fmt.Errorf(`jwkfetch.Cache: url %q is not registered`, u)
