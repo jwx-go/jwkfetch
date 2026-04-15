@@ -2,6 +2,7 @@ package jwkfetch_test
 
 import (
 	"context"
+	"crypto/tls"
 	jsonv2 "encoding/json/v2"
 	"errors"
 	"net/http"
@@ -155,4 +156,28 @@ func TestClientFetchRedirectPermittedWhenWhitelisted(t *testing.T) {
 	set, err := c.Fetch(context.Background(), origin.URL)
 	require.NoError(t, err, `fetch should follow a redirect whose target is whitelisted`)
 	require.Equal(t, 1, set.Len(), `set should have one key`)
+}
+
+// DefaultHTTPClient must install a dedicated *http.Transport — not
+// rely on the process-global http.DefaultTransport — so the JWKS
+// fetcher does not inherit HTTP_PROXY / HTTPS_PROXY env vars (SSRF
+// pivot) and pins an explicit TLS floor. Each call must also return
+// a fresh transport so different fetchers do not share connection
+// pools or TLS session state.
+func TestDefaultHTTPClientDedicatedTransport(t *testing.T) {
+	client := jwkfetch.DefaultHTTPClient()
+	tr, ok := client.Transport.(*http.Transport)
+	require.True(t, ok, `DefaultHTTPClient Transport must be a *http.Transport`)
+	require.NotSame(t, http.DefaultTransport, client.Transport,
+		`DefaultHTTPClient transport must not be http.DefaultTransport`)
+	require.Nil(t, tr.Proxy,
+		`DefaultHTTPClient transport must not inherit HTTP_PROXY / HTTPS_PROXY`)
+	require.NotNil(t, tr.TLSClientConfig,
+		`DefaultHTTPClient transport must set TLSClientConfig explicitly`)
+	require.GreaterOrEqual(t, int(tr.TLSClientConfig.MinVersion), int(tls.VersionTLS12),
+		`DefaultHTTPClient transport must pin TLS 1.2 or higher`)
+
+	other := jwkfetch.DefaultHTTPClient()
+	require.NotSame(t, client.Transport, other.Transport,
+		`DefaultHTTPClient must return a fresh transport per call`)
 }
