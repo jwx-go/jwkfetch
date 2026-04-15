@@ -50,6 +50,7 @@ options.
 | `HTTPClient` | Type alias for `httprc.HTTPClient`; `*http.Client` satisfies it |
 | `DefaultHTTPClient`, `WrapHTTPClientDefaults` | Helpers for building `*http.Client` values with the library's 30s timeout and redirect hardening |
 | `WhitelistError` | Error sentinel returned by `Client.Fetch` when a URL is rejected by the whitelist |
+| `HTTPStatusError`, `BodyTooLargeError`, `TransportError`, `ParseError` | Typed errors returned by `Client.Fetch` for non-whitelist failures — status, size cap, transport/IO, parse. Usable with `errors.Is` (zero-value) and `errors.As` for field extraction. |
 
 ### Option interfaces
 

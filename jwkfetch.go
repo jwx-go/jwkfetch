@@ -210,17 +210,17 @@ func (c *Client) Fetch(ctx context.Context, u string) (jwk.Set, error) {
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return nil, fmt.Errorf(`jwkfetch.Client.Fetch: failed to create new request: %w`, err)
+		return nil, TransportError{URL: u, Op: "new request", Err: err}
 	}
 
 	res, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf(`jwkfetch.Client.Fetch: request failed: %w`, err)
+		return nil, TransportError{URL: u, Op: "request", Err: err}
 	}
 	defer func() { _ = res.Body.Close() }()
 
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf(`jwkfetch.Client.Fetch: request returned status %d, expected 200`, res.StatusCode)
+		return nil, HTTPStatusError{StatusCode: res.StatusCode, URL: u}
 	}
 
 	// LimitReader caps memory at maxBodySize+1; reading +1 byte lets us detect
@@ -229,13 +229,17 @@ func (c *Client) Fetch(ctx context.Context, u string) (jwk.Set, error) {
 	// Slow-trickle attacks are mitigated by context deadlines and http.Client.Timeout.
 	buf, err := io.ReadAll(io.LimitReader(res.Body, maxBodySize+1))
 	if err != nil {
-		return nil, fmt.Errorf(`jwkfetch.Client.Fetch: failed to read response body for %q: %w`, u, err)
+		return nil, TransportError{URL: u, Op: "read response body", Err: err}
 	}
 	if int64(len(buf)) > maxBodySize {
-		return nil, fmt.Errorf(`jwkfetch.Client.Fetch: response body for %q exceeded max size of %d bytes`, u, maxBodySize)
+		return nil, BodyTooLargeError{Limit: maxBodySize, URL: u}
 	}
 
-	return jwk.Parse(buf, c.parseOptions...)
+	set, err := jwk.Parse(buf, c.parseOptions...)
+	if err != nil {
+		return nil, ParseError{URL: u, Err: err}
+	}
+	return set, nil
 }
 
 // DefaultHTTPClient returns a new *http.Client configured with the
