@@ -111,6 +111,13 @@ options.
   `^https://`. Do not re-raise this as a security finding without
   first proposing a behavior change; the current behavior is
   documented, not accidental.
+- `Cache.Shutdown` is mandatory. `NewCache` calls `httprc.Client.Start`,
+  which spawns background worker goroutines and refresh timers; those
+  live until `Shutdown` is called. Callers MUST `defer cache.Shutdown(ctx)`
+  right after `NewCache`. The godoc on `NewCache` and `Shutdown`, and
+  the README Cache example, all state this. Do not re-flag it as a
+  goroutine leak without first proposing a behavior change (e.g. a
+  lifecycle tied to `ctx.Done()`); the current contract is documented.
 - Error messages from `Client.Fetch`, `Cache.Fetch`, and the cache
   lookup/refresh family echo the caller-supplied URL verbatim so that
   operators can identify which JWKS endpoint failed. URLs containing
