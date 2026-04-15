@@ -117,7 +117,7 @@ Options that configure HTTP fetch policy work for both `NewClient` and
 
 | Option | Description |
 |--------|-------------|
-| `WithHTTPClient(c)` | Override the `*http.Client` used for fetches (default: `DefaultHTTPClient()` — 30s timeout, 5-redirect cap, HTTPS→HTTP redirect-hop block; the initial URL scheme is not checked — plaintext `http://` is contacted as-is) |
+| `WithHTTPClient(c)` | Override the `*http.Client` used for fetches (default: `DefaultHTTPClient()` — 30s timeout, 5-redirect cap, HTTPS→HTTP redirect-hop block, dedicated transport with no `HTTP_PROXY`/`HTTPS_PROXY` inheritance, TLS 1.2 floor; the initial URL scheme is not checked — plaintext `http://` is contacted as-is) |
 | `WithMaxBodySize(n)` | Maximum response body bytes (default: 10 MB) |
 | `WithParseOptions(...)` | `jwk.ParseOption` values passed through to `jwk.Parse` |
 
