@@ -1,6 +1,13 @@
 Changes
 =======
 
+UNRELEASED
+  * Client.Fetch now returns typed errors for non-whitelist failures:
+    HTTPStatusError, BodyTooLargeError, TransportError, ParseError.
+    Callers can branch retry/alert policy with errors.Is / errors.As
+    instead of matching on error message strings. The underlying
+    stdlib / jwk errors remain reachable via Unwrap.
+
 v4.0.0-alpha2 13 Apr 2026
   * Compatibility release for jwx/v4 v4.0.0-scratch.15. No code changes.
   * Doc fix: package example now shows side-effect import.

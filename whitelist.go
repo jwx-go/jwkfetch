@@ -2,6 +2,7 @@ package jwkfetch
 
 import (
 	"errors"
+	"fmt"
 	"regexp"
 )
 
@@ -98,4 +99,98 @@ func (whitelistError) Is(err error) bool {
 // by a Whitelist.
 func WhitelistError() error {
 	return errDefaultWhitelistError
+}
+
+// HTTPStatusError is returned by Client.Fetch when the JWKS endpoint
+// responds with a non-200 HTTP status. The StatusCode field carries
+// the observed status so callers can branch retry/alert policy
+// (e.g. retry on 5xx, alert on 4xx).
+//
+// Use errors.Is(err, HTTPStatusError{}) for a type check, or
+// errors.As to extract the fields.
+type HTTPStatusError struct {
+	StatusCode int
+	URL        string
+}
+
+func (e HTTPStatusError) Error() string {
+	return fmt.Sprintf(`jwkfetch.Client.Fetch: request returned status %d, expected 200`, e.StatusCode)
+}
+
+func (HTTPStatusError) Is(err error) bool {
+	_, ok := err.(HTTPStatusError)
+	return ok
+}
+
+// BodyTooLargeError is returned by Client.Fetch when the JWKS response
+// body exceeds the configured maximum (WithMaxBodySize, or the package
+// default). The Limit field carries the cap in bytes.
+//
+// Use errors.Is(err, BodyTooLargeError{}) for a type check, or
+// errors.As to extract the fields.
+type BodyTooLargeError struct {
+	Limit int64
+	URL   string
+}
+
+func (e BodyTooLargeError) Error() string {
+	return fmt.Sprintf(`jwkfetch.Client.Fetch: response body for %q exceeded max size of %d bytes`, e.URL, e.Limit)
+}
+
+func (BodyTooLargeError) Is(err error) bool {
+	_, ok := err.(BodyTooLargeError)
+	return ok
+}
+
+// TransportError wraps an HTTP transport-layer failure observed by
+// Client.Fetch: request construction, http.Client.Do, or response
+// body read. Unwrap returns the underlying stdlib error so callers
+// can still reach net.Error, *url.Error, etc.
+//
+// Use errors.Is(err, TransportError{}) for a type check, or errors.As
+// to extract the fields.
+type TransportError struct {
+	URL string
+	Op  string // "new request", "request", "read response body"
+	Err error
+}
+
+func (e TransportError) Error() string {
+	switch e.Op {
+	case "new request":
+		return fmt.Sprintf(`jwkfetch.Client.Fetch: failed to create new request: %s`, e.Err)
+	case "read response body":
+		return fmt.Sprintf(`jwkfetch.Client.Fetch: failed to read response body for %q: %s`, e.URL, e.Err)
+	default:
+		return fmt.Sprintf(`jwkfetch.Client.Fetch: request failed: %s`, e.Err)
+	}
+}
+
+func (e TransportError) Unwrap() error { return e.Err }
+
+func (TransportError) Is(err error) bool {
+	_, ok := err.(TransportError)
+	return ok
+}
+
+// ParseError wraps a jwk.Parse failure observed after the HTTP fetch
+// has succeeded. Unwrap returns the underlying jwk parse error so
+// existing errors.Is checks against jwk.ParseError() continue to work.
+//
+// Use errors.Is(err, jwkfetch.ParseError{}) for a type check, or
+// errors.As to extract the fields.
+type ParseError struct {
+	URL string
+	Err error
+}
+
+func (e ParseError) Error() string {
+	return fmt.Sprintf(`jwkfetch.Client.Fetch: failed to parse JWK set from %q: %s`, e.URL, e.Err)
+}
+
+func (e ParseError) Unwrap() error { return e.Err }
+
+func (ParseError) Is(err error) bool {
+	_, ok := err.(ParseError)
+	return ok
 }

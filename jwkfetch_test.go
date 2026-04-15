@@ -158,6 +158,93 @@ func TestClientFetchRedirectPermittedWhenWhitelisted(t *testing.T) {
 	require.Equal(t, 1, set.Len(), `set should have one key`)
 }
 
+// HTTP status failures must surface as jwkfetch.HTTPStatusError so
+// callers can branch retry/alert policy on the observed status code
+// without string-matching the error message.
+func TestClientFetchHTTPStatusError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "nope", http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	c := jwkfetch.NewClient(jwkfetch.WithHTTPClient(srv.Client()))
+	_, err := c.Fetch(context.Background(), srv.URL)
+	require.Error(t, err)
+	require.ErrorIs(t, err, jwkfetch.HTTPStatusError{})
+
+	var statusErr jwkfetch.HTTPStatusError
+	require.True(t, errors.As(err, &statusErr), `errors.As should extract HTTPStatusError`)
+	require.Equal(t, http.StatusNotFound, statusErr.StatusCode)
+	require.Equal(t, srv.URL, statusErr.URL)
+}
+
+// Body-size cap enforcement must surface as jwkfetch.BodyTooLargeError
+// so callers can distinguish "JWKS is absurdly big" from transient
+// network errors.
+func TestClientFetchBodyTooLargeError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Write a body larger than the configured cap below.
+		_, _ = w.Write(make([]byte, 4096))
+	}))
+	defer srv.Close()
+
+	const limit int64 = 128
+	c := jwkfetch.NewClient(
+		jwkfetch.WithHTTPClient(srv.Client()),
+		jwkfetch.WithMaxBodySize(limit),
+	)
+	_, err := c.Fetch(context.Background(), srv.URL)
+	require.Error(t, err)
+	require.ErrorIs(t, err, jwkfetch.BodyTooLargeError{})
+
+	var sizeErr jwkfetch.BodyTooLargeError
+	require.True(t, errors.As(err, &sizeErr), `errors.As should extract BodyTooLargeError`)
+	require.Equal(t, limit, sizeErr.Limit)
+	require.Equal(t, srv.URL, sizeErr.URL)
+}
+
+// http.Client.Do failures (unreachable host, closed listener, etc.)
+// must surface as jwkfetch.TransportError with the underlying error
+// still reachable via Unwrap so callers can match on net.Error and
+// friends.
+func TestClientFetchTransportError(t *testing.T) {
+	// 127.0.0.1:1 is reserved; connection must fail.
+	const target = "http://127.0.0.1:1/jwks.json"
+	c := jwkfetch.NewClient(jwkfetch.WithWhitelist(jwkfetch.InsecureWhitelist{}))
+	_, err := c.Fetch(context.Background(), target)
+	require.Error(t, err)
+	require.ErrorIs(t, err, jwkfetch.TransportError{})
+
+	var tErr jwkfetch.TransportError
+	require.True(t, errors.As(err, &tErr), `errors.As should extract TransportError`)
+	require.Equal(t, target, tErr.URL)
+	require.NotNil(t, tErr.Err, `Unwrap target must be populated`)
+	require.False(t, errors.Is(err, jwkfetch.WhitelistError()),
+		`transport failure must not look like a whitelist rejection`)
+}
+
+// Malformed JSON bodies must surface as jwkfetch.ParseError, while the
+// underlying jwk parse error remains reachable via Unwrap so callers
+// that already match on jwk.ParseError() continue to work.
+func TestClientFetchParseError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{not json`))
+	}))
+	defer srv.Close()
+
+	c := jwkfetch.NewClient(jwkfetch.WithHTTPClient(srv.Client()))
+	_, err := c.Fetch(context.Background(), srv.URL)
+	require.Error(t, err)
+	require.ErrorIs(t, err, jwkfetch.ParseError{})
+
+	var pErr jwkfetch.ParseError
+	require.True(t, errors.As(err, &pErr), `errors.As should extract ParseError`)
+	require.Equal(t, srv.URL, pErr.URL)
+	require.NotNil(t, pErr.Err, `Unwrap target must be populated`)
+}
+
 // DefaultHTTPClient must install a dedicated *http.Transport — not
 // rely on the process-global http.DefaultTransport — so the JWKS
 // fetcher does not inherit HTTP_PROXY / HTTPS_PROXY env vars (SSRF
