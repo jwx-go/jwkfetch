@@ -24,23 +24,24 @@ func jwksServer(t *testing.T) *httptest.Server {
 	}))
 }
 
-func TestClientFetchDefaultDeniesEveryURL(t *testing.T) {
+func TestClientFetchDefaultAllowsAllURLs(t *testing.T) {
 	srv := jwksServer(t)
 	defer srv.Close()
 
-	// No WithWhitelist — should deny by default.
+	// No WithWhitelist — should permit by default (v3-compatible).
 	c := jwkfetch.NewClient(jwkfetch.WithHTTPClient(srv.Client()))
 
-	_, err := c.Fetch(context.Background(), srv.URL)
-	require.Error(t, err, `Client with no whitelist should deny every URL`)
-	require.ErrorIs(t, err, jwkfetch.WhitelistError(),
-		`error should be a WhitelistError`)
+	set, err := c.Fetch(context.Background(), srv.URL)
+	require.NoError(t, err, `Client with no whitelist should permit every URL`)
+	require.Equal(t, 1, set.Len(), `set should have one key`)
 }
 
 func TestClientFetchInsecureWhitelistAllows(t *testing.T) {
 	srv := jwksServer(t)
 	defer srv.Close()
 
+	// Explicit InsecureWhitelist{} matches the default, but exercise
+	// the option path too.
 	c := jwkfetch.NewClient(
 		jwkfetch.WithHTTPClient(srv.Client()),
 		jwkfetch.WithWhitelist(jwkfetch.InsecureWhitelist{}),
@@ -101,4 +102,57 @@ func TestClientFetchNonExistentHost(t *testing.T) {
 	require.Error(t, err)
 	// Should NOT be a whitelist error — it's a transport failure.
 	require.False(t, errors.Is(err, jwkfetch.WhitelistError()))
+}
+
+// A hostile JWKS host must not be able to redirect the Client into a
+// URL that falls outside the caller's Whitelist. The Whitelist is
+// applied to every redirect target, not just the initial URL.
+func TestClientFetchRedirectRejectedByWhitelist(t *testing.T) {
+	// Attacker-controlled target, carrying a completely different
+	// JWKS. If the Client follows the redirect and parses this body,
+	// the attacker has substituted their own keys.
+	attacker := jwksServer(t)
+	defer attacker.Close()
+
+	// Origin that pretends to be the trusted JWKS URL but 302s to
+	// the attacker's server.
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, attacker.URL, http.StatusFound)
+	}))
+	defer origin.Close()
+
+	// Whitelist only the origin URL — the redirect target should be
+	// blocked, even though the Client got the origin URL past the
+	// initial whitelist check.
+	c := jwkfetch.NewClient(
+		jwkfetch.WithWhitelist(jwkfetch.NewMapWhitelist().Add(origin.URL)),
+	)
+
+	_, err := c.Fetch(context.Background(), origin.URL)
+	require.Error(t, err, `fetch should reject an off-whitelist redirect target`)
+	require.ErrorIs(t, err, jwkfetch.WhitelistError(),
+		`redirect rejection should surface as WhitelistError`)
+}
+
+// Counterpart to the above: when the whitelist covers both the
+// origin and the redirect target, following the redirect should
+// succeed.
+func TestClientFetchRedirectPermittedWhenWhitelisted(t *testing.T) {
+	target := jwksServer(t)
+	defer target.Close()
+
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	defer origin.Close()
+
+	c := jwkfetch.NewClient(
+		jwkfetch.WithWhitelist(
+			jwkfetch.NewMapWhitelist().Add(origin.URL).Add(target.URL),
+		),
+	)
+
+	set, err := c.Fetch(context.Background(), origin.URL)
+	require.NoError(t, err, `fetch should follow a redirect whose target is whitelisted`)
+	require.Equal(t, 1, set.Len(), `set should have one key`)
 }

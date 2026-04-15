@@ -6,18 +6,22 @@ This module (`github.com/jwx-go/jwkfetch/v4`) provides HTTP-based JWK Set
 retrieval for `github.com/lestrrat-go/jwx/v4`. It offers two
 complementary types, both of which implement `jwk.Fetcher`:
 
-- **`Client`** — a one-shot HTTP JWKS fetcher. Use it for ad-hoc
-  retrievals and `jku`-style JWS verification where the URL may be
-  attacker-controllable (whitelist defaults to deny-all).
+- **`Client`** — a one-shot HTTP JWKS fetcher. Defaults to permitting
+  every URL: fine for compile-time-constant or trusted-config URLs.
+  Set `WithWhitelist` to restrict — required when the URL comes from
+  an untrusted source such as a JWS `jku` header, otherwise an
+  attacker can point the fetcher at any URL it can reach (SSRF /
+  key substitution).
 - **`Cache`** — an httprc-backed store that keeps a fixed set of
   registered JWKS URLs hot with background refresh. Use it when you
   have a small, trusted list of JWKS endpoints and want to amortize
-  fetch cost.
+  fetch cost. Cache has no whitelist of its own; the URLs it will
+  contact are exactly the ones you passed to `Register`.
 
-This package was extracted from the main `jwk` module so the core jwx
-module has no dependency on `net/http` or `httprc`. All HTTP fetch
-surface that used to live in `jwk` (`jwk.Fetch`, `jwk.HTTPClient`,
-`jwk.Whitelist`, etc.) was moved here.
+This package holds the HTTP JWK Set fetch surface so the core jwx
+`jwk` module has no dependency on `net/http` or `httprc`. `jwk`
+itself only defines the abstract `Fetcher` interface; concrete
+implementations live here.
 
 ## Architecture
 
@@ -58,15 +62,32 @@ options.
 
 ### Safety defaults
 
-- `NewClient()` with no `WithWhitelist` denies every URL
-  (`BlockAllWhitelist` semantics). This is stricter than v3's
-  `jwk.Fetch`, which defaulted to `InsecureWhitelist`. Callers with
-  hard-coded trusted URLs must opt in via
-  `jwkfetch.WithWhitelist(jwkfetch.InsecureWhitelist{})`.
-- `Cache` does not enforce a whitelist. Registration is the trust
-  boundary: if you call `Cache.Register(ctx, url, ...)`, that URL is
-  trusted thereafter. Cache callers who need per-fetch policy should
-  use `Client` via `jwk.Fetcher` instead.
+- `NewClient()` with no `WithWhitelist` permits every URL
+  (`InsecureWhitelist` semantics). This is the right default for
+  compile-time-constant or trusted-config URLs: the trust decision
+  is already made by the code that wrote the URL. For `jku`-style
+  verification where the URL comes from an untrusted JWS header,
+  the caller MUST pass `WithWhitelist` with a `MapWhitelist`,
+  `RegexpWhitelist`, or custom `Whitelist` that restricts which
+  destinations the Client will contact. jwx itself does not prepend
+  a default deny for jku verification — the allowlist has to be
+  configured on the fetcher explicitly.
+- A restrictive `Whitelist` is applied to every redirect target,
+  not just the initial URL. `Client.Fetch` wraps the HTTPClient's
+  `CheckRedirect` so each hop of a 3xx chain is checked against the
+  caller's `Whitelist`, preventing a hostile JWKS host from
+  redirecting into an off-allowlist URL. This covers the common
+  `*http.Client` case. If you supply a custom `HTTPClient`
+  implementation via `WithHTTPClient`, you are responsible for
+  policing redirect targets yourself.
+- `Cache` is a cache, not a policy enforcer. It only ever contacts
+  URLs you passed to `Register`. `Fetch` and `Lookup` return an
+  error for URLs that haven't been registered — that's a cache
+  miss, not a security check. There is no separate Whitelist
+  concept on Cache because the set of URLs it will ever contact is
+  already determined by your `Register` calls. Callers who need a
+  whitelist check against dynamic URLs should use `Client` with
+  `WithWhitelist`.
 - `NewClient` / `NewCache` with no `WithHTTPClient` use
   `DefaultHTTPClient()`, which has a 30-second timeout, a 5-redirect
   cap, and a redirect policy that blocks HTTPS→HTTP scheme
