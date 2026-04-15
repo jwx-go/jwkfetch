@@ -92,6 +92,15 @@ options.
   `DefaultHTTPClient()`, which has a 30-second timeout, a 5-redirect
   cap, and a redirect policy that blocks HTTPS→HTTP scheme
   downgrades.
+- `DefaultHTTPClient()` installs a dedicated `*http.Transport` rather
+  than falling through to `http.DefaultTransport`. The dedicated
+  transport has `Proxy: nil` (so `HTTP_PROXY` / `HTTPS_PROXY` are
+  NOT honored — a JWKS fetcher silently following an env-var proxy
+  is an SSRF pivot invisible to the caller) and pins
+  `TLSClientConfig.MinVersion = tls.VersionTLS12`. Callers who need
+  a proxy-aware transport (corporate egress) must construct their
+  own `*http.Client` with `http.ProxyFromEnvironment` or a custom
+  `Proxy` function and pass it via `WithHTTPClient`.
 
 ## Build / Test
 

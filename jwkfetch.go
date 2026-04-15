@@ -16,8 +16,10 @@ package jwkfetch
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"time"
 
@@ -205,14 +207,51 @@ func (c *Client) Fetch(ctx context.Context, u string) (jwk.Set, error) {
 }
 
 // DefaultHTTPClient returns a new *http.Client configured with the
-// defaults used by jwkfetch: a 30-second timeout, a redirect policy
-// that blocks HTTPS-to-HTTP scheme downgrades, and a maximum of 5
-// redirects.
+// defaults used by jwkfetch: a 30-second overall request timeout, a
+// 5-redirect cap, a redirect policy that blocks HTTPS-to-HTTP scheme
+// downgrades, and a dedicated *http.Transport that does NOT honor
+// HTTP_PROXY / HTTPS_PROXY environment variables and pins the TLS
+// floor at 1.2.
+//
+// The returned *http.Client does not share connection pools, TLS
+// session state, or proxy configuration with the process-global
+// http.DefaultTransport. This is deliberate: a JWKS fetcher that
+// silently follows an attacker-influenced proxy env var is an SSRF
+// pivot invisible to the caller. Callers who need a proxy-aware
+// transport (corporate egress, MITM-inspecting enterprise proxy)
+// must construct their own *http.Client with http.ProxyFromEnvironment
+// or a custom Proxy function and pass it via WithHTTPClient.
 //
 // Useful for callers who want to start from the library's default
-// protections and wrap them (e.g. adding a custom Transport).
+// protections and wrap them (e.g. adding a custom TLS configuration).
 func DefaultHTTPClient() *http.Client {
-	return WrapHTTPClientDefaults(&http.Client{})
+	return WrapHTTPClientDefaults(&http.Client{
+		Transport: newDefaultTransport(),
+	})
+}
+
+// newDefaultTransport builds the *http.Transport used by
+// DefaultHTTPClient. It is intentionally separate from
+// http.DefaultTransport so that jwkfetch's defaults do not inherit
+// process-global proxy env vars, connection pools, or TLS session
+// state. See DefaultHTTPClient for rationale.
+func newDefaultTransport() *http.Transport {
+	return &http.Transport{
+		Proxy: nil,
+		DialContext: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          10,
+		MaxIdleConnsPerHost:   2,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		},
+	}
 }
 
 // WrapHTTPClientDefaults returns a shallow copy of the given
