@@ -20,9 +20,12 @@ import (
 // every registered URL. Per-URL knobs (refresh interval, wait-ready)
 // are passed to Register as RegisterOption values.
 //
-// Cache does NOT enforce a Whitelist — registration is the trust
-// boundary for cached URLs. Callers who need whitelist enforcement on
-// a per-fetch basis should use Client via jwk.Fetcher instead.
+// Cache has no Whitelist concept of its own because the set of URLs
+// it will ever contact is exactly the set passed to Register. Fetch
+// and Lookup return an error for URLs that haven't been registered —
+// that's a cache miss, not a security check. Callers who need a
+// whitelist check against dynamic URLs should use Client with
+// WithWhitelist via jwk.Fetcher instead.
 type Cache struct {
 	httpClient   HTTPClient
 	maxBodySize  int64
@@ -120,8 +123,8 @@ func (c *Cache) Register(ctx context.Context, u string, options ...RegisterOptio
 }
 
 // Fetch implements jwk.Fetcher. It returns the cached jwk.Set for u,
-// or an error if u has not been registered. Use Register to add URLs
-// to the cache before calling Fetch.
+// or an error if u has not been registered. Register the URL via
+// Cache.Register before calling Fetch.
 func (c *Cache) Fetch(ctx context.Context, u string) (jwk.Set, error) {
 	if !c.IsRegistered(ctx, u) {
 		return nil, fmt.Errorf(`jwkfetch.Cache: url %q is not registered`, u)

@@ -28,6 +28,25 @@ Requires `GOEXPERIMENT=jsonv2`.
 
 ### One-shot fetch with `Client`
 
+A `Client` constructed with no options permits every URL. This is
+the right default when the URL you are fetching is a compile-time
+constant or comes from trusted configuration: you already made the
+trust decision by writing the URL into your code, and a whitelist
+would be redundant.
+
+```go
+client := jwkfetch.NewClient()
+set, err := client.Fetch(ctx, "https://issuer.example/jwks.json")
+```
+
+When the URL originates from an untrusted source — most commonly
+the `jku` header of a JWS handed to you by a peer — you MUST
+restrict the reachable URLs with `WithWhitelist`. Without a
+restrictive `Whitelist`, a hostile peer can point the fetcher at
+any URL on any network the fetcher can reach (SSRF), or can hand
+you a JWKS their own server controls and have their keys accepted
+as "the issuer's keys":
+
 ```go
 client := jwkfetch.NewClient(
     jwkfetch.WithWhitelist(
@@ -35,20 +54,23 @@ client := jwkfetch.NewClient(
     ),
 )
 
-set, err := client.Fetch(ctx, "https://issuer.example/jwks.json")
-```
-
-A `Client` constructed with no `WithWhitelist` denies every URL
-(`BlockAllWhitelist` semantics). This is the safe default for
-`jku`-style inputs. Callers with hard-coded trusted URLs must opt in
-via `WithWhitelist(jwkfetch.InsecureWhitelist{})` or a specific
-allowlist.
-
-Wire a `Client` into `jws.WithVerifyAuto` or `jwt.WithVerifyAuto`:
-
-```go
+// Wire into jws.WithVerifyAuto or jwt.WithVerifyAuto.
 _, err := jws.Verify(signed, jws.WithVerifyAuto(client))
 ```
+
+A restrictive `Whitelist` is applied to BOTH the initial URL and
+every redirect target. If `issuer.example/jwks.json` responds with
+`302 https://attacker.example/evil.json`, the redirect is rejected
+even though the initial URL passed the whitelist — a hostile JWKS
+host cannot bypass the allowlist by 302-ing into an off-list URL.
+
+**Caveat**: the redirect-hop enforcement requires jwkfetch to wrap
+the HTTP client's `CheckRedirect`, which only works when the
+`HTTPClient` is a `*http.Client` (the overwhelmingly common case
+including `DefaultHTTPClient()`). If you plug in a custom
+`HTTPClient` implementation via `WithHTTPClient`, the redirect-hop
+whitelist does NOT apply and you are on the hook for policing
+redirects through your implementation's own mechanism.
 
 ### Background-refreshed cache with `Cache`
 
@@ -64,8 +86,11 @@ err = cache.Register(ctx, "https://issuer.example/jwks.json",
 _, err = jws.Verify(signed, jws.WithVerifyAuto(cache))
 ```
 
-`Cache` does not enforce a whitelist — registration is the trust
-boundary for cached URLs. Use `Client` if you need per-fetch policy.
+`Cache` has no whitelist of its own — it's a cache, so the set of
+URLs it will ever contact is exactly the set you passed to
+`Register`. `Fetch` and `Lookup` return an error for URLs that
+haven't been registered. Use `Client` with `WithWhitelist` if you
+need a whitelist check against a dynamic set of URLs.
 
 ## Options
 
@@ -82,7 +107,7 @@ Options that configure HTTP fetch policy work for both `NewClient` and
 
 | Option | Description |
 |--------|-------------|
-| `WithWhitelist(w)` | URL allowlist consulted before every fetch (default: deny-all) |
+| `WithWhitelist(w)` | URL allowlist consulted on the initial URL and every redirect hop (default: allow-all; set for any URL from an untrusted source) |
 
 `Cache.Register` per-URL options:
 
@@ -95,13 +120,102 @@ Options that configure HTTP fetch policy work for both `NewClient` and
 
 ## Whitelist types
 
-`Client.Whitelist` accepts any implementation of `jwkfetch.Whitelist`:
+`WithWhitelist` accepts any implementation of `jwkfetch.Whitelist`:
 
-- `InsecureWhitelist{}` — allow every URL (opt-in permissive)
-- `BlockAllWhitelist{}` — deny every URL (the nil-Whitelist default)
-- `NewMapWhitelist().Add(url1).Add(url2)` — fixed allow-list
+- `InsecureWhitelist{}` — allow every URL (the default when `WithWhitelist` isn't passed)
+- `BlockAllWhitelist{}` — deny every URL (useful for tests, safety assertions, or intentionally-disabled code paths)
+- `NewMapWhitelist().Add(url1).Add(url2)` — fixed allow-list of exact URLs
 - `NewRegexpWhitelist().Add(pattern)` — pattern-based allow-list
 - `WhitelistFunc(func(string) bool)` — custom predicate
+
+A restrictive `Whitelist` (anything other than `InsecureWhitelist{}`)
+is checked on every URL the Client contacts, including the targets
+of 3xx redirects.
+
+**`Whitelist` applies to `Client` only.** `Cache` has no `Whitelist`
+field and does not accept `WithWhitelist` — trying to pass it to
+`NewCache` is a compile-time error. `Cache` is a cache, so the set
+of URLs it will ever contact is exactly the set you passed to
+`Register`; `Fetch` and `Lookup` return an error for anything else.
+If you need a whitelist check against a set of URLs that isn't
+known at `Register` time, use `Client` with `WithWhitelist` instead.
+
+## Allowlist patterns: permit specific URLs, block everything else
+
+The whitelist types above all have "fail closed" semantics: any URL
+that doesn't match a listed entry / pattern / predicate is rejected
+with a `WhitelistError`. There is no hidden catch-all that needs
+disabling — if you construct a restrictive whitelist and it doesn't
+match, the Client refuses the request. This applies identically to
+the initial URL passed to `Fetch` and to every redirect target.
+
+### Fixed list of exact URLs
+
+Use `MapWhitelist` when the full set of URLs the Client will ever
+contact is known at construction time. List every URL you need to
+allow, including any URL you expect the server to redirect into:
+
+```go
+client := jwkfetch.NewClient(
+    jwkfetch.WithWhitelist(
+        jwkfetch.NewMapWhitelist().
+            Add("https://issuer.example/.well-known/jwks.json").
+            Add("https://issuer.example/keys/v2.json"), // known redirect target
+    ),
+)
+```
+
+If you list only the initial URL and the server 302s to a path you
+didn't list, the redirect target will be rejected — which is
+usually what you want, since a surprise 302 is how a hostile host
+would attempt substitution.
+
+### Origin-prefix or path-pattern match
+
+When the issuer might redirect between paths on the same origin, or
+when you want to allow any path under a known host, use
+`RegexpWhitelist`:
+
+```go
+import "regexp"
+
+client := jwkfetch.NewClient(
+    jwkfetch.WithWhitelist(
+        jwkfetch.NewRegexpWhitelist().
+            Add(regexp.MustCompile(`^https://issuer\.example/`)),
+    ),
+)
+```
+
+Two things are load-bearing in that pattern:
+
+1. The `^` anchor — without it, the regex matches if `issuer.example/`
+   appears anywhere in the URL, e.g. `https://attacker.example/redirect?to=https://issuer.example/...`.
+2. The literal `/` after the host — without it, the pattern matches
+   `https://issuer.example.attacker.com/jwks.json`, because
+   `issuer.example` is a prefix of `issuer.example.attacker.com`.
+   Always put the path separator immediately after the hostname to
+   stop greedy matching from escaping the host you meant.
+
+### Custom policy
+
+For anything more involved — a set known only at runtime, or a
+policy that consults an external config — implement `Whitelist`
+directly or wrap a closure with `WhitelistFunc`:
+
+```go
+allowed := loadTrustedJWKSURLsFromConfig() // map[string]struct{}
+client := jwkfetch.NewClient(
+    jwkfetch.WithWhitelist(jwkfetch.WhitelistFunc(func(u string) bool {
+        _, ok := allowed[u]
+        return ok
+    })),
+)
+```
+
+The function is called once for the initial URL and once for every
+redirect target. Returning `false` rejects that hop with a
+`WhitelistError`.
 
 Errors returned when a URL is rejected match
 `errors.Is(err, jwkfetch.WhitelistError())`.

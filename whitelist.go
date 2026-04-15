@@ -21,20 +21,21 @@ func (f WhitelistFunc) IsAllowed(u string) bool {
 }
 
 // InsecureWhitelist is a Whitelist implementation that allows every URL.
-// It is intended for callers with hard-coded, trusted JWKS URLs that want
-// to opt out of whitelist enforcement.
+// It is the implicit default when a Client is constructed without a
+// WithWhitelist option — the right choice for hard-coded or trusted-
+// config JWKS URLs.
 //
 // Do NOT use InsecureWhitelist in any code path where the URL originates
 // from untrusted input (for example, the `jku` header of a JWS). For
 // those paths, construct a MapWhitelist, RegexpWhitelist, or custom
-// Whitelist.
+// Whitelist via WithWhitelist.
 type InsecureWhitelist struct{}
 
 func (InsecureWhitelist) IsAllowed(string) bool { return true }
 
-// BlockAllWhitelist is a whitelist that blocks all URLs. It is the
-// zero-value default for Client.Whitelist: callers must explicitly set
-// a permissive Whitelist before the Client will contact any URL.
+// BlockAllWhitelist is a Whitelist that rejects every URL. Use it to
+// construct a Client that explicitly refuses to fetch anything — for
+// tests, safety assertions, or intentionally-disabled code paths.
 type BlockAllWhitelist struct{}
 
 func (BlockAllWhitelist) IsAllowed(string) bool { return false }

@@ -63,8 +63,21 @@ const defaultMaxRedirects = 5
 // internal state is immutable after construction and safe to share
 // across goroutines.
 //
-// A Client constructed with no options denies every URL — callers
-// must opt into a permissive or specific whitelist via WithWhitelist.
+// A Client constructed with no WithWhitelist permits every URL,
+// matching the common case of fetching a hard-coded or trusted-config
+// JWKS endpoint. For `jku`-style verification where the URL comes
+// from an untrusted JWS header, the caller MUST restrict reachable
+// URLs via WithWhitelist — see WithWhitelist for the available
+// Whitelist types.
+//
+// When a restrictive Whitelist is configured, it is applied to BOTH
+// the initial URL and every redirect target. The Client achieves
+// this by wrapping the HTTPClient's CheckRedirect with a Whitelist
+// pre-check, so a hostile JWKS host cannot 302 into an off-allowlist
+// URL. This wrapping only applies when HTTPClient is a *http.Client
+// (the overwhelmingly common case); if you supply a custom
+// HTTPClient implementation via WithHTTPClient, you are responsible
+// for applying the Whitelist to redirect targets yourself.
 type Client struct {
 	httpClient   HTTPClient
 	whitelist    Whitelist
@@ -75,12 +88,12 @@ type Client struct {
 // NewClient constructs a one-shot JWKS fetcher. The returned Client
 // implements jwk.Fetcher.
 //
-// Safety: a Client constructed with no WithWhitelist option denies
-// every URL (BlockAllWhitelist semantics). This is the safe default
-// for attacker-controllable inputs such as `jku` headers. Callers
-// with a fixed, trusted JWKS URL must opt in via
-// jwkfetch.WithWhitelist(jwkfetch.InsecureWhitelist{}) or a specific
-// MapWhitelist/RegexpWhitelist.
+// With no WithWhitelist option, the Client permits every URL. This is
+// the right default for trusted, hard-coded JWKS URLs. For `jku`
+// verification or any fetch whose URL comes from an attacker-
+// controllable source, pass WithWhitelist with a MapWhitelist,
+// RegexpWhitelist, or other Whitelist implementation that restricts
+// the reachable URLs.
 func NewClient(options ...ClientOption) *Client {
 	c := &Client{}
 	for _, opt := range options {
@@ -95,27 +108,65 @@ func NewClient(options ...ClientOption) *Client {
 			c.parseOptions = option.MustGet[[]jwk.ParseOption](opt)
 		}
 	}
+
+	// Normalize: a nil Whitelist means "permit every URL". Storing
+	// the concrete type removes the nil-check from Fetch's hot path
+	// and lets the redirect-hop wrapping below decide once whether
+	// the Whitelist is restrictive.
+	if c.whitelist == nil {
+		c.whitelist = InsecureWhitelist{}
+	}
+
+	// Resolve the HTTPClient now. If the caller did not pass one, we
+	// materialize the default here (rather than lazy-initializing
+	// inside Fetch) so that any whitelist-driven CheckRedirect
+	// wrapping can be applied exactly once at construction time.
+	if c.httpClient == nil {
+		c.httpClient = DefaultHTTPClient()
+	}
+
+	// When the Whitelist is restrictive (anything other than
+	// InsecureWhitelist{}), interpose it on redirect targets too by
+	// wrapping the HTTPClient's CheckRedirect. A hostile JWKS host
+	// must not be able to 302 into an off-allowlist URL. We only
+	// wrap *http.Client values; exotic HTTPClient implementations
+	// are left untouched, and the caller is responsible for
+	// policing redirects through their custom implementation.
+	if _, insecure := c.whitelist.(InsecureWhitelist); !insecure {
+		if hc, ok := c.httpClient.(*http.Client); ok {
+			cloned := *hc
+			orig := cloned.CheckRedirect
+			wl := c.whitelist
+			cloned.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+				if !wl.IsAllowed(req.URL.String()) {
+					return whitelistError{fmt.Errorf(`jwkfetch.Client.Fetch: redirect target %q has been rejected by whitelist`, req.URL.String())}
+				}
+				if orig != nil {
+					return orig(req, via)
+				}
+				return defaultCheckRedirect(req, via)
+			}
+			c.httpClient = &cloned
+		}
+	}
+
 	return c
 }
 
 // Fetch retrieves a JWK Set from the given URL. It implements
 // jwk.Fetcher.
 //
-// The URL is validated against the Client's configured Whitelist
-// before any network request is made. A Client constructed without
-// WithWhitelist rejects every URL.
+// If the Client was constructed with a restrictive Whitelist
+// (anything other than InsecureWhitelist{}), that Whitelist is
+// consulted against the initial URL and every redirect target —
+// ensuring a hostile JWKS host cannot 302 into an off-allowlist URL.
+// See the Client doc for the exact semantics and the non-*http.Client
+// caveat.
+//
+// A Client constructed without WithWhitelist permits every URL.
 func (c *Client) Fetch(ctx context.Context, u string) (jwk.Set, error) {
-	wl := c.whitelist
-	if wl == nil {
-		wl = BlockAllWhitelist{}
-	}
-	if !wl.IsAllowed(u) {
+	if !c.whitelist.IsAllowed(u) {
 		return nil, whitelistError{fmt.Errorf(`jwkfetch.Client.Fetch: url %q has been rejected by whitelist`, u)}
-	}
-
-	httpClient := c.httpClient
-	if httpClient == nil {
-		httpClient = DefaultHTTPClient()
 	}
 
 	maxBodySize := c.maxBodySize
@@ -128,7 +179,7 @@ func (c *Client) Fetch(ctx context.Context, u string) (jwk.Set, error) {
 		return nil, fmt.Errorf(`jwkfetch.Client.Fetch: failed to create new request: %w`, err)
 	}
 
-	res, err := httpClient.Do(req)
+	res, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf(`jwkfetch.Client.Fetch: request failed: %w`, err)
 	}
