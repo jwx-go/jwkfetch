@@ -26,6 +26,21 @@ import (
 // that's a cache miss, not a security check. Callers who need a
 // whitelist check against dynamic URLs should use Client with
 // WithWhitelist via jwk.Fetcher instead.
+//
+// Unlike Client, Cache does NOT wrap its HTTPClient's CheckRedirect.
+// Registration is the trust boundary for cached URLs; redirect
+// targets encountered while fetching a registered URL are not
+// re-checked against the registration set. Concretely, if you
+// register https://issuer.example/jwks.json and that host returns
+// a 302 to https://attacker.example/jwks.json, the cache will
+// follow the redirect subject only to the HTTPClient's own
+// CheckRedirect policy — by default, that's DefaultHTTPClient's
+// HTTPS-downgrade block and 5-hop cap, and nothing else. If a
+// registered JWKS endpoint's DNS, CDN, or origin could be
+// compromised into issuing such redirects, either pin resolution
+// at the Transport layer, serve the JWKS over a channel whose
+// endpoint you trust end-to-end, or use Client with a restrictive
+// Whitelist instead.
 type Cache struct {
 	httpClient   HTTPClient
 	maxBodySize  int64
