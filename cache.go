@@ -88,6 +88,10 @@ func (t transformer) Transform(_ context.Context, res *http.Response) (jwk.Set, 
 // Fetch policy options (WithHTTPClient, WithMaxBodySize,
 // WithParseOptions) apply uniformly to every URL registered on the
 // Cache.
+//
+// NewCache starts the underlying httprc.Client, which spawns background
+// worker goroutines. Callers MUST call Cache.Shutdown when the Cache is
+// no longer needed to release those workers; see Shutdown for details.
 func NewCache(ctx context.Context, client *httprc.Client, options ...CacheOption) (*Cache, error) {
 	c := &Cache{}
 	for _, opt := range options {
@@ -209,7 +213,19 @@ func (c *Cache) Unregister(ctx context.Context, u string) error {
 	return c.ctrl.Remove(ctx, u)
 }
 
-// Shutdown stops the cache controller.
+// Shutdown stops the cache controller and releases the httprc worker
+// goroutines that NewCache started. Callers MUST call Shutdown when the
+// Cache is no longer needed; otherwise httprc workers and background
+// refresh timers leak for the lifetime of the process. A process that
+// repeatedly replaces its Cache (for example on config reload) without
+// shutting the previous one down will stack another generation of
+// workers on every reload.
+//
+// The expected pattern is:
+//
+//	cache, err := jwkfetch.NewCache(ctx, httprc.NewClient())
+//	if err != nil { ... }
+//	defer cache.Shutdown(ctx)
 func (c *Cache) Shutdown(ctx context.Context) error {
 	return c.ctrl.ShutdownContext(ctx)
 }

@@ -95,6 +95,7 @@ client := jwkfetch.NewClient(
 ```go
 cache, err := jwkfetch.NewCache(ctx, httprc.NewClient())
 if err != nil { ... }
+defer cache.Shutdown(ctx)
 
 err = cache.Register(ctx, "https://issuer.example/jwks.json",
     jwkfetch.WithMinInterval(5*time.Minute),
@@ -103,6 +104,12 @@ err = cache.Register(ctx, "https://issuer.example/jwks.json",
 // Cache implements jwk.Fetcher:
 _, err = jws.Verify(signed, jws.WithVerifyAuto(cache))
 ```
+
+`Cache.Shutdown` is mandatory: `NewCache` spawns httprc background
+workers and refresh timers that live until `Shutdown` is called. A
+process that forgets to call it — or that replaces its cache on config
+reload without shutting the old one down first — will leak a generation
+of worker goroutines each time.
 
 `Cache` has no whitelist of its own — it's a cache, so the set of
 URLs it will ever contact is exactly the set you passed to
