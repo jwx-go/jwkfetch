@@ -129,6 +129,83 @@ func TestCachedSet(t *testing.T) {
 	}
 }
 
+// jwkSetTransformer is a no-op transformer used solely to construct
+// an *httprc.ResourceBase[jwk.Set] that will never actually be
+// fetched. It exists so that TestCachedSet_NotReady can build a
+// CachedSet whose underlying resource has never been populated.
+type jwkSetTransformer struct{}
+
+func (jwkSetTransformer) Transform(_ context.Context, _ *http.Response) (jwk.Set, error) {
+	return nil, fmt.Errorf(`not used`)
+}
+
+// TestCachedSet_NotReady verifies that a CachedSet whose underlying
+// httprc resource has never been populated does not block, returns
+// zero / not-found values across every read accessor, and — most
+// importantly — returns Len() == 0 rather than the legacy -1
+// sentinel. It also passes a pre-cancelled context to catch any
+// regression that starts blocking on Ready(ctx) again.
+func TestCachedSet_NotReady(t *testing.T) {
+	t.Parallel()
+
+	r, err := httprc.NewResource[jwk.Set](
+		"https://example.invalid/jwks.json",
+		jwkSetTransformer{},
+	)
+	require.NoError(t, err, `httprc.NewResource should succeed`)
+
+	cs := jwkfetch.NewCachedSet(r)
+
+	// Run every accessor under a watchdog — any regression that
+	// starts blocking on Ready() again will trip this instead of
+	// hanging the whole test binary.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+
+		require.Equal(t, 0, cs.Len(), `Len() on not-ready CachedSet must return 0, not -1`)
+
+		k, ok := cs.Key(0)
+		require.Nil(t, k, `Key(0) should be nil`)
+		require.False(t, ok, `Key(0) ok should be false`)
+
+		k, ok = cs.LookupKeyID("nope")
+		require.Nil(t, k, `LookupKeyID should be nil`)
+		require.False(t, ok, `LookupKeyID ok should be false`)
+
+		require.Nil(t, cs.Keys(), `Keys() should be nil`)
+
+		count := 0
+		for range cs.All() {
+			count++
+		}
+		require.Equal(t, 0, count, `All() should yield nothing`)
+
+		fieldCount := 0
+		for range cs.Fields() {
+			fieldCount++
+		}
+		require.Equal(t, 0, fieldCount, `Fields() should yield nothing`)
+
+		_, cloneErr := cs.Clone()
+		require.Error(t, cloneErr, `Clone() should return an error`)
+
+		_, ok = cs.Field("kty")
+		require.False(t, ok, `Field() ok should be false`)
+
+		if m, hasMarshal := cs.(interface{ MarshalJSON() ([]byte, error) }); hasMarshal {
+			_, marshalErr := m.MarshalJSON()
+			require.Error(t, marshalErr, `MarshalJSON() should return an error`)
+		}
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatalf(`not-ready CachedSet reads blocked — regression`)
+	}
+}
+
 func TestCache_explicit_refresh_interval(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
