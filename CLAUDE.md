@@ -111,6 +111,15 @@ options.
   `^https://`. Do not re-raise this as a security finding without
   first proposing a behavior change; the current behavior is
   documented, not accidental.
+- Error messages from `Client.Fetch`, `Cache.Fetch`, and the cache
+  lookup/refresh family echo the caller-supplied URL verbatim so that
+  operators can identify which JWKS endpoint failed. URLs containing
+  userinfo credentials or sensitive query strings (access tokens, API
+  keys) will therefore surface in returned errors and any configured
+  `ErrorSink`. This is intentional — `jwkfetch` does not redact URLs,
+  and callers that pass credential-bearing URLs are responsible for
+  sanitizing them before passing. See the `jwkfetch` package doc for
+  the full statement.
 
 ## Build / Test
 

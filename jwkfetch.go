@@ -12,6 +12,20 @@
 //
 // This package was extracted from the main jwk module so that the
 // core jwx module does not depend on net/http or httprc.
+//
+// # URLs in error messages
+//
+// Error messages returned from Client.Fetch, Cache.Fetch, and related
+// lookup/refresh methods include the URL that was passed to them so
+// operators can identify which JWKS endpoint failed. This is
+// intentional and is not redacted. URLs carrying userinfo
+// (user:password@host) or sensitive query strings (for example
+// ?access_token=... or ?api_key=...) will therefore appear in
+// returned errors, any wrapping application logs, and the httprc
+// ErrorSink configured on a Cache. Callers that fetch JWKS from
+// credential-bearing URLs are responsible for sanitizing those URLs
+// before passing them to jwkfetch, or for accepting that the
+// credentials may surface in error output.
 package jwkfetch
 
 import (
@@ -176,6 +190,14 @@ func NewClient(options ...ClientOption) *Client {
 // caveat.
 //
 // A Client constructed without WithWhitelist permits every URL.
+//
+// Error messages from Fetch — whitelist rejections, status mismatches,
+// body-size overruns, parse failures, and transport errors — include
+// u verbatim so callers can identify which URL failed. If u contains
+// credentials in userinfo or query strings, those will appear in the
+// returned error and any log or sink that records it; sanitize u at
+// the caller if that is a concern. See the package doc for the full
+// statement.
 func (c *Client) Fetch(ctx context.Context, u string) (jwk.Set, error) {
 	if !c.whitelist.IsAllowed(u) {
 		return nil, whitelistError{fmt.Errorf(`jwkfetch.Client.Fetch: url %q has been rejected by whitelist`, u)}
