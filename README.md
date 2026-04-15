@@ -72,6 +72,24 @@ including `DefaultHTTPClient()`). If you plug in a custom
 whitelist does NOT apply and you are on the hook for policing
 redirects through your implementation's own mechanism.
 
+**Plaintext HTTP is NOT rejected by default.** `DefaultHTTPClient()`
+blocks HTTPS→HTTP downgrades on *redirect* hops, but does not
+reject a plaintext `http://` URL passed directly to `Fetch`. This
+is consistent with the trusted-URL default: the caller chose the
+URL, and scheme is the caller's decision in the same way host is.
+If you need to refuse plaintext, either pre-validate the URL
+before calling `Fetch`, or pass a `RegexpWhitelist` whose patterns
+are anchored with `^https://`:
+
+```go
+client := jwkfetch.NewClient(
+    jwkfetch.WithWhitelist(
+        jwkfetch.NewRegexpWhitelist().
+            Add(regexp.MustCompile(`^https://issuer\.example/`)),
+    ),
+)
+```
+
 ### Background-refreshed cache with `Cache`
 
 ```go
@@ -99,7 +117,7 @@ Options that configure HTTP fetch policy work for both `NewClient` and
 
 | Option | Description |
 |--------|-------------|
-| `WithHTTPClient(c)` | Override the `*http.Client` used for fetches (default: `DefaultHTTPClient()` — 30s timeout, 5-redirect cap, HTTPS-downgrade block, dedicated transport with no `HTTP_PROXY`/`HTTPS_PROXY` inheritance, TLS 1.2 floor) |
+| `WithHTTPClient(c)` | Override the `*http.Client` used for fetches (default: `DefaultHTTPClient()` — 30s timeout, 5-redirect cap, HTTPS→HTTP redirect-hop block, dedicated transport with no `HTTP_PROXY`/`HTTPS_PROXY` inheritance, TLS 1.2 floor; the initial URL scheme is not checked — plaintext `http://` is contacted as-is) |
 | `WithMaxBodySize(n)` | Maximum response body bytes (default: 10 MB) |
 | `WithParseOptions(...)` | `jwk.ParseOption` values passed through to `jwk.Parse` |
 
