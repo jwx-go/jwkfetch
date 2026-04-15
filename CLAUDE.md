@@ -92,6 +92,16 @@ options.
   `DefaultHTTPClient()`, which has a 30-second timeout, a 5-redirect
   cap, and a redirect policy that blocks HTTPS→HTTP scheme
   downgrades.
+- Plaintext `http://` JWKS URLs are NOT rejected. The HTTPS-only
+  redirect policy applies to redirect hops only; the scheme of the
+  initial URL passed to `Client.Fetch` is the caller's
+  responsibility. This is intentional and consistent with the
+  trusted-URL default — scheme choice is delegated to the caller
+  the same way host choice is. Callers who want plaintext refused
+  should pre-validate or pass a `RegexpWhitelist` anchored on
+  `^https://`. Do not re-raise this as a security finding without
+  first proposing a behavior change; the current behavior is
+  documented, not accidental.
 
 ## Build / Test
 

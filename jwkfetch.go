@@ -70,6 +70,16 @@ const defaultMaxRedirects = 5
 // URLs via WithWhitelist — see WithWhitelist for the available
 // Whitelist types.
 //
+// Fetch does not reject plaintext `http://` URLs. The trusted-URL
+// default delegates scheme choice to the caller, the same way it
+// delegates host choice: if you hand the Client an `http://` URL,
+// it will contact it in cleartext. Callers who need to refuse
+// plaintext must either pre-validate the URL before calling Fetch,
+// or pass a Whitelist whose patterns are anchored with `^https://`.
+// The default redirect policy blocks HTTPS→HTTP downgrades on
+// redirect hops, but does not retroactively reject a plaintext
+// initial URL.
+//
 // When a restrictive Whitelist is configured, it is applied to BOTH
 // the initial URL and every redirect target. The Client achieves
 // this by wrapping the HTTPClient's CheckRedirect with a Whitelist
@@ -209,6 +219,12 @@ func (c *Client) Fetch(ctx context.Context, u string) (jwk.Set, error) {
 // that blocks HTTPS-to-HTTP scheme downgrades, and a maximum of 5
 // redirects.
 //
+// The redirect policy only applies to subsequent hops: the scheme of
+// the INITIAL URL passed to Client.Fetch is NOT checked, and a
+// plaintext `http://` JWKS URL will be contacted in cleartext. See
+// the Client doc for the rationale and for how to opt into a
+// plaintext rejection via Whitelist patterns.
+//
 // Useful for callers who want to start from the library's default
 // protections and wrap them (e.g. adding a custom Transport).
 func DefaultHTTPClient() *http.Client {
@@ -251,6 +267,11 @@ func WrapHTTPClientDefaults(client *http.Client) *http.Client {
 // defaultCheckRedirect is the CheckRedirect policy for the default
 // HTTP client. It prevents HTTPS-to-HTTP scheme downgrades and caps
 // the total number of redirects.
+//
+// The HTTPS-only enforcement applies to redirect hops only — the
+// scheme of the initial URL passed to Client.Fetch is the caller's
+// responsibility. A plaintext `http://` URL passed directly to Fetch
+// is contacted in cleartext.
 //
 // This does NOT protect against redirects to private/internal IP
 // addresses. For full SSRF protection, callers should provide a custom
