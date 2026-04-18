@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/lestrrat-go/httprc/v3 v3.0.5
-	github.com/lestrrat-go/jwx/v4 v4.0.0-scratch.19.0.20260415011024-27c7c4e8bcc8
+	github.com/lestrrat-go/jwx/v4 v4.0.0-scratch.27
 	github.com/lestrrat-go/option/v3 v3.0.0-alpha1
 	github.com/stretchr/testify v1.11.1
 )
