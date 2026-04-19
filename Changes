@@ -1,7 +1,8 @@
 Changes
 =======
 
-UNRELEASED
+v4.0.0 19 Apr 2026
+  * First stable v4 release. Tracks github.com/lestrrat-go/jwx/v4 v4.0.0.
   * Client.Fetch now returns typed errors for non-whitelist failures:
     HTTPStatusError, BodyTooLargeError, TransportError, ParseError.
     Callers can branch retry/alert policy with errors.Is / errors.As
