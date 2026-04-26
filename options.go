@@ -98,11 +98,12 @@ func WithParseOptions(opts ...jwk.ParseOption) GlobalFetchOption {
 // Cache does not enforce whitelists because registration is the trust
 // boundary.
 //
-// Passing a nil Whitelist causes NewClient to return an error: nil is
-// almost always a configuration bug, and silently treating it as
-// allow-all would turn a hardened deployment into an SSRF tool. To
-// configure allow-all explicitly, pass InsecureWhitelist{}; for
-// deny-all, pass BlockAllWhitelist{}.
+// Passing a nil Whitelist is a configuration bug. NewClient captures
+// the error; the resulting Client returns that error from every
+// Fetch call rather than silently treating nil as allow-all (which
+// would turn a hardened deployment into an SSRF tool). To configure
+// allow-all explicitly, pass InsecureWhitelist{}; for deny-all,
+// pass BlockAllWhitelist{}.
 //
 // Omitting WithWhitelist entirely keeps the documented default
 // (allow-all, equivalent to InsecureWhitelist{}) — see NewClient.
