@@ -94,9 +94,18 @@ func WithParseOptions(opts ...jwk.ParseOption) GlobalFetchOption {
 }
 
 // WithWhitelist configures the URL allowlist consulted by
-// Client.Fetch before any network request. A nil Whitelist (the
-// default) denies every URL. Only valid for NewClient — Cache does
-// not enforce whitelists because registration is the trust boundary.
+// Client.Fetch before any network request. Only valid for NewClient —
+// Cache does not enforce whitelists because registration is the trust
+// boundary.
+//
+// Passing a nil Whitelist causes NewClient to return an error: nil is
+// almost always a configuration bug, and silently treating it as
+// allow-all would turn a hardened deployment into an SSRF tool. To
+// configure allow-all explicitly, pass InsecureWhitelist{}; for
+// deny-all, pass BlockAllWhitelist{}.
+//
+// Omitting WithWhitelist entirely keeps the documented default
+// (allow-all, equivalent to InsecureWhitelist{}) — see NewClient.
 func WithWhitelist(w Whitelist) ClientOption {
 	return &clientOption{option.New(identWhitelist{}, w)}
 }
