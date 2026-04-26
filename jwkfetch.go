@@ -120,14 +120,29 @@ type Client struct {
 // controllable source, pass WithWhitelist with a MapWhitelist,
 // RegexpWhitelist, or other Whitelist implementation that restricts
 // the reachable URLs.
-func NewClient(options ...ClientOption) *Client {
+//
+// Returns an error if WithWhitelist was passed with a nil Whitelist:
+// nil is almost certainly a configuration bug (e.g. a config-derived
+// value that turned out empty), and silently treating it as allow-all
+// would turn a hardened deployment into an SSRF tool. Pass
+// InsecureWhitelist{} explicitly for allow-all, or BlockAllWhitelist{}
+// for deny-all.
+func NewClient(options ...ClientOption) (*Client, error) {
 	c := &Client{}
 	for _, opt := range options {
 		switch opt.Ident() {
 		case identHTTPClient{}:
 			c.httpClient = option.MustGet[HTTPClient](opt)
 		case identWhitelist{}:
-			c.whitelist = option.MustGet[Whitelist](opt)
+			// Use Get rather than MustGet so a nil Whitelist (a typed
+			// nil interface stored in the option, or any other value
+			// that fails the type assertion) surfaces as our own
+			// error rather than a panic deep inside the option pkg.
+			w, _ := option.Get[Whitelist](opt)
+			if w == nil {
+				return nil, fmt.Errorf(`jwkfetch.NewClient: WithWhitelist requires a non-nil Whitelist; pass InsecureWhitelist{} for explicit allow-all or BlockAllWhitelist{} for deny-all`)
+			}
+			c.whitelist = w
 		case identMaxBodySize{}:
 			c.maxBodySize = option.MustGet[int64](opt)
 		case identParseOptions{}:
@@ -135,10 +150,12 @@ func NewClient(options ...ClientOption) *Client {
 		}
 	}
 
-	// Normalize: a nil Whitelist means "permit every URL". Storing
-	// the concrete type removes the nil-check from Fetch's hot path
-	// and lets the redirect-hop wrapping below decide once whether
-	// the Whitelist is restrictive.
+	// Default: no WithWhitelist option means "permit every URL".
+	// Storing the concrete type removes the nil-check from Fetch's
+	// hot path and lets the redirect-hop wrapping below decide once
+	// whether the Whitelist is restrictive. Note that a caller who
+	// explicitly passed WithWhitelist(nil) above has already been
+	// rejected with an error.
 	if c.whitelist == nil {
 		c.whitelist = InsecureWhitelist{}
 	}
@@ -176,7 +193,7 @@ func NewClient(options ...ClientOption) *Client {
 		}
 	}
 
-	return c
+	return c, nil
 }
 
 // Fetch retrieves a JWK Set from the given URL. It implements

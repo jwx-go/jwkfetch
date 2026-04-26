@@ -86,10 +86,11 @@ func TestJWSVerifyAuto_WhitelistAllowsIssuer(t *testing.T) {
 	payload := []byte("hello jku")
 	signed := signJKU(t, signingKey, jkuURL, payload)
 
-	client := jwkfetch.NewClient(
+	client, err := jwkfetch.NewClient(
 		jwkfetch.WithHTTPClient(srv.Client()),
 		jwkfetch.WithWhitelist(jwkfetch.NewMapWhitelist().Add(jkuURL)),
 	)
+	require.NoError(t, err, `NewClient should succeed`)
 
 	got, err := jws.Verify(signed, jws.WithVerifyAuto(client))
 	require.NoError(t, err, `jws.Verify via jku should succeed when the fetcher whitelist allows the issuer URL`)
@@ -107,14 +108,15 @@ func TestJWSVerifyAuto_WhitelistRejectsUnlistedIssuer(t *testing.T) {
 	// Whitelist deliberately excludes the issuer URL — simulates a
 	// caller who configured restrictions too tightly, or a jku URL
 	// that is not in the caller's known-issuer set.
-	client := jwkfetch.NewClient(
+	client, err := jwkfetch.NewClient(
 		jwkfetch.WithHTTPClient(srv.Client()),
 		jwkfetch.WithWhitelist(
 			jwkfetch.NewMapWhitelist().Add("https://some-other-issuer.example/jwks.json"),
 		),
 	)
+	require.NoError(t, err, `NewClient should succeed`)
 
-	_, err := jws.Verify(signed, jws.WithVerifyAuto(client))
+	_, err = jws.Verify(signed, jws.WithVerifyAuto(client))
 	require.Error(t, err, `jws.Verify should fail when the fetcher rejects the jku URL`)
 }
 
@@ -161,10 +163,11 @@ func TestJWSVerifyAuto_WhitelistRejectsRedirectedTarget(t *testing.T) {
 
 	// Whitelist covers the issuer URL only. The redirect target
 	// must be rejected.
-	client := jwkfetch.NewClient(
+	client, err := jwkfetch.NewClient(
 		jwkfetch.WithHTTPClient(issuer.Client()),
 		jwkfetch.WithWhitelist(jwkfetch.NewMapWhitelist().Add(issuer.URL)),
 	)
+	require.NoError(t, err, `NewClient should succeed`)
 
 	_, err = jws.Verify(signed, jws.WithVerifyAuto(client))
 	require.Error(t, err, `jws.Verify should fail when a redirect target is off-whitelist`)
@@ -201,7 +204,8 @@ func TestJWSVerifyAuto_PermissiveClientCompletesUnsafely(t *testing.T) {
 	payload := []byte("hello jku")
 	signed := signJKU(t, signingKey, jkuURL, payload)
 
-	client := jwkfetch.NewClient(jwkfetch.WithHTTPClient(srv.Client()))
+	client, err := jwkfetch.NewClient(jwkfetch.WithHTTPClient(srv.Client()))
+	require.NoError(t, err, `NewClient should succeed`)
 
 	got, err := jws.Verify(signed, jws.WithVerifyAuto(client))
 	require.NoError(t, err, `permissive Client is accepted — jwx cannot enforce whitelist policy`)
