@@ -30,8 +30,7 @@ func TestClientFetchDefaultAllowsAllURLs(t *testing.T) {
 	defer srv.Close()
 
 	// No WithWhitelist — should permit by default (v3-compatible).
-	c, err := jwkfetch.NewClient(jwkfetch.WithHTTPClient(srv.Client()))
-	require.NoError(t, err, `NewClient should succeed`)
+	c := jwkfetch.NewClient(jwkfetch.WithHTTPClient(srv.Client()))
 
 	set, err := c.Fetch(context.Background(), srv.URL)
 	require.NoError(t, err, `Client with no whitelist should permit every URL`)
@@ -44,11 +43,10 @@ func TestClientFetchInsecureWhitelistAllows(t *testing.T) {
 
 	// Explicit InsecureWhitelist{} matches the default, but exercise
 	// the option path too.
-	c, err := jwkfetch.NewClient(
+	c := jwkfetch.NewClient(
 		jwkfetch.WithHTTPClient(srv.Client()),
 		jwkfetch.WithWhitelist(jwkfetch.InsecureWhitelist{}),
 	)
-	require.NoError(t, err, `NewClient should succeed`)
 
 	set, err := c.Fetch(context.Background(), srv.URL)
 	require.NoError(t, err, `fetch should succeed with InsecureWhitelist`)
@@ -59,11 +57,10 @@ func TestClientFetchMapWhitelistAllowsListed(t *testing.T) {
 	srv := jwksServer(t)
 	defer srv.Close()
 
-	c, err := jwkfetch.NewClient(
+	c := jwkfetch.NewClient(
 		jwkfetch.WithHTTPClient(srv.Client()),
 		jwkfetch.WithWhitelist(jwkfetch.NewMapWhitelist().Add(srv.URL)),
 	)
-	require.NoError(t, err, `NewClient should succeed`)
 
 	set, err := c.Fetch(context.Background(), srv.URL)
 	require.NoError(t, err, `fetch should succeed for listed URL`)
@@ -74,13 +71,12 @@ func TestClientFetchMapWhitelistRejectsUnlisted(t *testing.T) {
 	srv := jwksServer(t)
 	defer srv.Close()
 
-	c, err := jwkfetch.NewClient(
+	c := jwkfetch.NewClient(
 		jwkfetch.WithHTTPClient(srv.Client()),
 		jwkfetch.WithWhitelist(jwkfetch.NewMapWhitelist().Add("https://allowed.example/jwks.json")),
 	)
-	require.NoError(t, err, `NewClient should succeed`)
 
-	_, err = c.Fetch(context.Background(), srv.URL)
+	_, err := c.Fetch(context.Background(), srv.URL)
 	require.Error(t, err, `fetch should fail for unlisted URL`)
 	require.ErrorIs(t, err, jwkfetch.WhitelistError())
 }
@@ -89,23 +85,21 @@ func TestClientFetchBlockAllWhitelist(t *testing.T) {
 	srv := jwksServer(t)
 	defer srv.Close()
 
-	c, err := jwkfetch.NewClient(
+	c := jwkfetch.NewClient(
 		jwkfetch.WithHTTPClient(srv.Client()),
 		jwkfetch.WithWhitelist(jwkfetch.BlockAllWhitelist{}),
 	)
-	require.NoError(t, err, `NewClient should succeed`)
 
-	_, err = c.Fetch(context.Background(), srv.URL)
+	_, err := c.Fetch(context.Background(), srv.URL)
 	require.Error(t, err)
 	require.ErrorIs(t, err, jwkfetch.WhitelistError())
 }
 
 func TestClientFetchNonExistentHost(t *testing.T) {
-	c, err := jwkfetch.NewClient(
+	c := jwkfetch.NewClient(
 		jwkfetch.WithWhitelist(jwkfetch.InsecureWhitelist{}),
 	)
-	require.NoError(t, err, `NewClient should succeed`)
-	_, err = c.Fetch(context.Background(), "http://127.0.0.1:1/jwks.json")
+	_, err := c.Fetch(context.Background(), "http://127.0.0.1:1/jwks.json")
 	require.Error(t, err)
 	// Should NOT be a whitelist error — it's a transport failure.
 	require.False(t, errors.Is(err, jwkfetch.WhitelistError()))
@@ -131,12 +125,11 @@ func TestClientFetchRedirectRejectedByWhitelist(t *testing.T) {
 	// Whitelist only the origin URL — the redirect target should be
 	// blocked, even though the Client got the origin URL past the
 	// initial whitelist check.
-	c, err := jwkfetch.NewClient(
+	c := jwkfetch.NewClient(
 		jwkfetch.WithWhitelist(jwkfetch.NewMapWhitelist().Add(origin.URL)),
 	)
-	require.NoError(t, err, `NewClient should succeed`)
 
-	_, err = c.Fetch(context.Background(), origin.URL)
+	_, err := c.Fetch(context.Background(), origin.URL)
 	require.Error(t, err, `fetch should reject an off-whitelist redirect target`)
 	require.ErrorIs(t, err, jwkfetch.WhitelistError(),
 		`redirect rejection should surface as WhitelistError`)
@@ -154,12 +147,11 @@ func TestClientFetchRedirectPermittedWhenWhitelisted(t *testing.T) {
 	}))
 	defer origin.Close()
 
-	c, err := jwkfetch.NewClient(
+	c := jwkfetch.NewClient(
 		jwkfetch.WithWhitelist(
 			jwkfetch.NewMapWhitelist().Add(origin.URL).Add(target.URL),
 		),
 	)
-	require.NoError(t, err, `NewClient should succeed`)
 
 	set, err := c.Fetch(context.Background(), origin.URL)
 	require.NoError(t, err, `fetch should follow a redirect whose target is whitelisted`)
@@ -175,9 +167,8 @@ func TestClientFetchHTTPStatusError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := jwkfetch.NewClient(jwkfetch.WithHTTPClient(srv.Client()))
-	require.NoError(t, err, `NewClient should succeed`)
-	_, err = c.Fetch(context.Background(), srv.URL)
+	c := jwkfetch.NewClient(jwkfetch.WithHTTPClient(srv.Client()))
+	_, err := c.Fetch(context.Background(), srv.URL)
 	require.Error(t, err)
 	require.ErrorIs(t, err, jwkfetch.HTTPStatusError{})
 
@@ -199,12 +190,11 @@ func TestClientFetchBodyTooLargeError(t *testing.T) {
 	defer srv.Close()
 
 	const limit int64 = 128
-	c, err := jwkfetch.NewClient(
+	c := jwkfetch.NewClient(
 		jwkfetch.WithHTTPClient(srv.Client()),
 		jwkfetch.WithMaxBodySize(limit),
 	)
-	require.NoError(t, err, `NewClient should succeed`)
-	_, err = c.Fetch(context.Background(), srv.URL)
+	_, err := c.Fetch(context.Background(), srv.URL)
 	require.Error(t, err)
 	require.ErrorIs(t, err, jwkfetch.BodyTooLargeError{})
 
@@ -221,9 +211,8 @@ func TestClientFetchBodyTooLargeError(t *testing.T) {
 func TestClientFetchTransportError(t *testing.T) {
 	// 127.0.0.1:1 is reserved; connection must fail.
 	const target = "http://127.0.0.1:1/jwks.json"
-	c, err := jwkfetch.NewClient(jwkfetch.WithWhitelist(jwkfetch.InsecureWhitelist{}))
-	require.NoError(t, err, `NewClient should succeed`)
-	_, err = c.Fetch(context.Background(), target)
+	c := jwkfetch.NewClient(jwkfetch.WithWhitelist(jwkfetch.InsecureWhitelist{}))
+	_, err := c.Fetch(context.Background(), target)
 	require.Error(t, err)
 	require.ErrorIs(t, err, jwkfetch.TransportError{})
 
@@ -245,9 +234,8 @@ func TestClientFetchParseError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := jwkfetch.NewClient(jwkfetch.WithHTTPClient(srv.Client()))
-	require.NoError(t, err, `NewClient should succeed`)
-	_, err = c.Fetch(context.Background(), srv.URL)
+	c := jwkfetch.NewClient(jwkfetch.WithHTTPClient(srv.Client()))
+	_, err := c.Fetch(context.Background(), srv.URL)
 	require.Error(t, err)
 	require.ErrorIs(t, err, jwkfetch.ParseError{})
 
@@ -283,33 +271,52 @@ func TestDefaultHTTPClientDedicatedTransport(t *testing.T) {
 
 // WithWhitelist(nil) is almost always a configuration bug — silently
 // treating it as allow-all would turn a hardened deployment into an
-// SSRF tool. NewClient must reject it loudly. Callers that want
-// allow-all explicitly should pass InsecureWhitelist{}.
+// SSRF tool. NewClient captures the misconfiguration and Fetch
+// surfaces it on every call. The Client is returned non-nil so a
+// `defer` block lining up against NewClient still works; the failure
+// shows up the moment the caller actually tries to fetch.
 func TestNewClientRejectsNilWhitelist(t *testing.T) {
-	t.Run("explicit nil", func(t *testing.T) {
-		c, err := jwkfetch.NewClient(jwkfetch.WithWhitelist(nil))
-		require.Error(t, err, `NewClient must reject WithWhitelist(nil)`)
-		require.Nil(t, c, `NewClient must not return a partially-constructed Client`)
+	t.Run("explicit nil surfaces from Fetch", func(t *testing.T) {
+		c := jwkfetch.NewClient(jwkfetch.WithWhitelist(nil))
+		require.NotNil(t, c, `NewClient should still return a non-nil Client so defer chains work`)
+		_, err := c.Fetch(context.Background(), "https://example.test/jwks.json")
+		require.Error(t, err, `Fetch must surface the WithWhitelist(nil) misconfiguration`)
 		require.Contains(t, err.Error(), "WithWhitelist requires a non-nil Whitelist",
 			`error message should name the option`)
 	})
 
 	t.Run("nil typed Whitelist via interface", func(t *testing.T) {
 		var w jwkfetch.Whitelist
-		c, err := jwkfetch.NewClient(jwkfetch.WithWhitelist(w))
-		require.Error(t, err, `NewClient must reject a nil Whitelist interface value`)
-		require.Nil(t, c)
+		c := jwkfetch.NewClient(jwkfetch.WithWhitelist(w))
+		require.NotNil(t, c)
+		_, err := c.Fetch(context.Background(), "https://example.test/jwks.json")
+		require.Error(t, err, `Fetch must surface a nil Whitelist interface value`)
+	})
+
+	t.Run("sticky error fires on every Fetch", func(t *testing.T) {
+		c := jwkfetch.NewClient(jwkfetch.WithWhitelist(nil))
+		_, err1 := c.Fetch(context.Background(), "https://example.test/a")
+		_, err2 := c.Fetch(context.Background(), "https://example.test/b")
+		require.Error(t, err1)
+		require.Error(t, err2, `the misconfiguration must not be cleared by a single Fetch`)
 	})
 
 	t.Run("explicit InsecureWhitelist still works", func(t *testing.T) {
-		c, err := jwkfetch.NewClient(jwkfetch.WithWhitelist(jwkfetch.InsecureWhitelist{}))
+		srv := jwksServer(t)
+		defer srv.Close()
+		c := jwkfetch.NewClient(
+			jwkfetch.WithHTTPClient(srv.Client()),
+			jwkfetch.WithWhitelist(jwkfetch.InsecureWhitelist{}),
+		)
+		_, err := c.Fetch(context.Background(), srv.URL)
 		require.NoError(t, err, `WithWhitelist(InsecureWhitelist{}) is the supported allow-all opt-in`)
-		require.NotNil(t, c)
 	})
 
 	t.Run("no WithWhitelist still defaults to allow-all", func(t *testing.T) {
-		c, err := jwkfetch.NewClient()
-		require.NoError(t, err, `NewClient with no options keeps the documented allow-all default`)
-		require.NotNil(t, c)
+		srv := jwksServer(t)
+		defer srv.Close()
+		c := jwkfetch.NewClient(jwkfetch.WithHTTPClient(srv.Client()))
+		_, err := c.Fetch(context.Background(), srv.URL)
+		require.NoError(t, err, `NewClient with no WithWhitelist keeps the documented allow-all default`)
 	})
 }
