@@ -28,7 +28,7 @@ import (
 // WithWhitelist via jwk.Fetcher instead.
 //
 // Unlike Client, Cache does NOT wrap its HTTPClient's CheckRedirect.
-// Registration is the trust boundary for cached URLs; redirect
+// Registration trusts the host, not just the URL string: redirect
 // targets encountered while fetching a registered URL are not
 // re-checked against the registration set. Concretely, if you
 // register https://issuer.example/jwks.json and that host returns
