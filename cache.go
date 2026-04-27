@@ -35,16 +35,12 @@ import (
 // a 302 to https://attacker.example/jwks.json, the cache will
 // follow the redirect subject only to the HTTPClient's own
 // CheckRedirect policy — by default, that's DefaultHTTPClient's
-// HTTPS-downgrade block and 5-hop cap, and nothing else. This
-// matches how real-world JWKS deployments legitimately redirect a
-// registered URL through a CDN URL; a default-on "redirect must
-// end at a registered URL" check would either break those
-// deployments or be trivially bypassable by an attacker who
-// already controls the registered host. If a registered JWKS
-// endpoint's DNS, CDN, or origin could be compromised into issuing
-// such redirects, either pin resolution at the Transport layer,
-// serve the JWKS over a channel whose endpoint you trust
-// end-to-end, or use Client with a restrictive Whitelist instead.
+// HTTPS-downgrade block and 5-hop cap, and nothing else. If a
+// registered JWKS endpoint's DNS, CDN, or origin could be
+// compromised into issuing such redirects, either pin resolution
+// at the Transport layer, serve the JWKS over a channel whose
+// endpoint you trust end-to-end, or use Client with a restrictive
+// Whitelist instead.
 //
 // Error messages produced by Cache — including those surfaced
 // through the httprc.ErrorSink configured on its underlying client
