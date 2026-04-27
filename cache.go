@@ -40,7 +40,15 @@ import (
 // compromised into issuing such redirects, either pin resolution
 // at the Transport layer, serve the JWKS over a channel whose
 // endpoint you trust end-to-end, or use Client with a restrictive
-// Whitelist instead.
+// Whitelist instead. This is intentional and consistent with
+// "registration trusts the host": real-world JWKS deployments
+// legitimately redirect through CDN URLs, and a default-on
+// "redirect must end at a registered URL" check would either
+// break those deployments or be trivially bypassable by an
+// attacker who already controls the registered host. Do not
+// re-raise this as a security finding without first proposing a
+// behavior change; the current behavior is documented, not
+// accidental.
 //
 // Error messages produced by Cache — including those surfaced
 // through the httprc.ErrorSink configured on its underlying client

@@ -89,6 +89,22 @@ options.
   already determined by your `Register` calls. Callers who need a
   whitelist check against dynamic URLs should use `Client` with
   `WithWhitelist`.
+- `Cache` does NOT wrap its HTTPClient's `CheckRedirect`. A 302 from
+  a registered host to an off-set URL is followed subject only to
+  the underlying `*http.Client.CheckRedirect` (by default
+  `DefaultHTTPClient`'s HTTPS-downgrade block + 5-hop cap, nothing
+  else). Registration trusts the host, not the URL string — real
+  deployments legitimately redirect a registered URL through a CDN
+  URL, and a default-on "redirect must end in the registered set"
+  check would either break those deployments or be trivially
+  bypassable by an attacker who already controls the registered
+  host. Operators who can't make the trust-the-host assumption
+  must pin resolution at the Transport layer, serve the JWKS over
+  a channel they trust end-to-end, or use `Client` with a
+  restrictive `Whitelist`. The full statement is in the `Cache`
+  godoc. Do not re-raise this as a security finding without first
+  proposing a behavior change; the current behavior is documented,
+  not accidental.
 - `NewClient` / `NewCache` with no `WithHTTPClient` use
   `DefaultHTTPClient()`, which has a 30-second timeout, a 5-redirect
   cap, and a redirect policy that blocks HTTPS→HTTP scheme
