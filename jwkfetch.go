@@ -186,6 +186,14 @@ func NewClient(options ...ClientOption) *Client {
 	// wrap *http.Client values; exotic HTTPClient implementations
 	// are left untouched, and the caller is responsible for
 	// policing redirects through their custom implementation.
+	//
+	// Order: whitelist → defaultCheckRedirect → orig. The default
+	// policy (5-redirect cap, HTTPS-downgrade block) MUST run even
+	// when the caller's *http.Client brought its own CheckRedirect
+	// — otherwise a permissive caller policy (or one that ignores
+	// the cap) silently disables those library-level protections.
+	// This mirrors WrapHTTPClientDefaults's chaining; the two
+	// helpers should keep this order in sync.
 	if _, insecure := c.whitelist.(InsecureWhitelist); !insecure {
 		if hc, ok := c.httpClient.(*http.Client); ok {
 			cloned := *hc
@@ -195,10 +203,13 @@ func NewClient(options ...ClientOption) *Client {
 				if !wl.IsAllowed(req.URL.String()) {
 					return whitelistError{fmt.Errorf(`jwkfetch.Client.Fetch: redirect target %q has been rejected by whitelist`, req.URL.String())}
 				}
+				if err := defaultCheckRedirect(req, via); err != nil {
+					return err
+				}
 				if orig != nil {
 					return orig(req, via)
 				}
-				return defaultCheckRedirect(req, via)
+				return nil
 			}
 			c.httpClient = &cloned
 		}
