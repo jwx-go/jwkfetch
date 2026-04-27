@@ -101,10 +101,9 @@ options.
   host. Operators who can't make the trust-the-host assumption
   must pin resolution at the Transport layer, serve the JWKS over
   a channel they trust end-to-end, or use `Client` with a
-  restrictive `Whitelist`. The full statement is in the `Cache`
-  godoc. Do not re-raise this as a security finding without first
-  proposing a behavior change; the current behavior is documented,
-  not accidental.
+  restrictive `Whitelist`. Do not re-raise this as a security
+  finding without first proposing a behavior change; the current
+  behavior is documented, not accidental.
 - `NewClient` / `NewCache` with no `WithHTTPClient` use
   `DefaultHTTPClient()`, which has a 30-second timeout, a 5-redirect
   cap, and a redirect policy that blocks HTTPS→HTTP scheme
