@@ -28,27 +28,23 @@ import (
 // WithWhitelist via jwk.Fetcher instead.
 //
 // Unlike Client, Cache does NOT wrap its HTTPClient's CheckRedirect.
-// Registration is the trust boundary for cached URLs; redirect
+// Registration trusts the host, not just the URL string: redirect
 // targets encountered while fetching a registered URL are not
 // re-checked against the registration set. Concretely, if you
 // register https://issuer.example/jwks.json and that host returns
 // a 302 to https://attacker.example/jwks.json, the cache will
 // follow the redirect subject only to the HTTPClient's own
 // CheckRedirect policy — by default, that's DefaultHTTPClient's
-// HTTPS-downgrade block and 5-hop cap, and nothing else. If a
-// registered JWKS endpoint's DNS, CDN, or origin could be
-// compromised into issuing such redirects, either pin resolution
-// at the Transport layer, serve the JWKS over a channel whose
-// endpoint you trust end-to-end, or use Client with a restrictive
-// Whitelist instead. This is intentional and consistent with
-// "registration trusts the host": real-world JWKS deployments
-// legitimately redirect through CDN URLs, and a default-on
-// "redirect must end at a registered URL" check would either
-// break those deployments or be trivially bypassable by an
-// attacker who already controls the registered host. Do not
-// re-raise this as a security finding without first proposing a
-// behavior change; the current behavior is documented, not
-// accidental.
+// HTTPS-downgrade block and 5-hop cap, and nothing else. This
+// matches how real-world JWKS deployments legitimately redirect a
+// registered URL through a CDN URL; a default-on "redirect must
+// end at a registered URL" check would either break those
+// deployments or be trivially bypassable by an attacker who
+// already controls the registered host. If a registered JWKS
+// endpoint's DNS, CDN, or origin could be compromised into issuing
+// such redirects, either pin resolution at the Transport layer,
+// serve the JWKS over a channel whose endpoint you trust
+// end-to-end, or use Client with a restrictive Whitelist instead.
 //
 // Error messages produced by Cache — including those surfaced
 // through the httprc.ErrorSink configured on its underlying client
