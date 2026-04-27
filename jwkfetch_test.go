@@ -7,7 +7,9 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/jwx-go/jwkfetch/v4"
 	"github.com/lestrrat-go/jwx/v4/jwk"
@@ -319,4 +321,66 @@ func TestNewClientRejectsNilWhitelist(t *testing.T) {
 		_, err := c.Fetch(context.Background(), srv.URL)
 		require.NoError(t, err, `NewClient with no WithWhitelist keeps the documented allow-all default`)
 	})
+}
+
+// TestClientFetchRedirectCapAppliesWithCustomCheckRedirect pins the
+// redirect-hop cap (defaultMaxRedirects = 5) when the caller supplies
+// both WithHTTPClient(custom) AND WithWhitelist(...). Previously the
+// whitelist-wrap branch in NewClient called the caller's
+// CheckRedirect after the whitelist check passed and skipped the
+// library's defaultCheckRedirect entirely — so a custom CheckRedirect
+// that returned nil (the trivial accept-all case) caused the library
+// to follow redirects indefinitely, defeating the documented
+// "5-redirect cap".
+//
+// The fix mirrors WrapHTTPClientDefaults's ordering: whitelist →
+// defaultCheckRedirect → orig. The default policy runs first; if it
+// rejects, the caller's CheckRedirect never sees the request.
+func TestClientFetchRedirectCapAppliesWithCustomCheckRedirect(t *testing.T) {
+	// Track how many requests the server saw. Without the cap a
+	// permissive caller CheckRedirect would let this go forever —
+	// the test ctx timeout below bounds the runtime even when the
+	// cap is broken, so we can still assert sensibly.
+	var hops atomic.Int32
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hops.Add(1)
+		// Each hop redirects to a distinct path so whitelist
+		// matchers that compare full URLs do not short-circuit.
+		http.Redirect(w, r, srv.URL+r.URL.Path+"/x", http.StatusFound)
+	}))
+	defer srv.Close()
+
+	// Permissive caller-supplied CheckRedirect — would allow
+	// indefinite redirects on its own. The library's 5-hop cap must
+	// still kick in.
+	customClient := &http.Client{
+		Transport: srv.Client().Transport,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return nil
+		},
+	}
+
+	c := jwkfetch.NewClient(
+		jwkfetch.WithHTTPClient(customClient),
+		// Permit any URL on this server — the test is about the
+		// redirect cap, not the whitelist.
+		jwkfetch.WithWhitelist(jwkfetch.WhitelistFunc(func(string) bool { return true })),
+	)
+
+	// Hard deadline so a broken cap surfaces as ctx cancel instead
+	// of hanging the test process.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := c.Fetch(ctx, srv.URL+"/start")
+	require.Error(t, err, `fetch should fail when redirect cap is exceeded`)
+	// The library's cap stops at exactly defaultMaxRedirects (5)
+	// hops — once exceeded, defaultCheckRedirect returns the
+	// "stopped after N redirects" error. Anything more than a
+	// handful of hops means the cap did not fire.
+	require.LessOrEqual(t, hops.Load(), int32(10),
+		`server saw %d hops — the 5-redirect cap is not being enforced`, hops.Load())
+	require.Contains(t, err.Error(), "stopped after",
+		`error must be the library's redirect cap, not a transport-level overflow or context cancel`)
 }
