@@ -1,6 +1,18 @@
 Changes
 =======
 
+v4.0.1 28 Apr 2026
+  * `WithWhitelist(nil)` now records a sticky error on the Client / Cache
+    rather than silently degrading to the default permissive whitelist.
+    `Client.Fetch` returns this error on every call, so a misconfigured
+    fetcher fails closed instead of fetching arbitrary URLs.
+  * Apply the 5-hop redirect cap even when the caller supplies a custom
+    `CheckRedirect` via `WithHTTPClient`. Previously a custom hook could
+    suppress the cap entirely.
+  * Document `Cache`'s redirect trust model: 3xx targets are followed
+    subject only to the underlying http.Client policy (host trust, not
+    URL trust). See package and `Cache` godoc.
+
 v4.0.0 19 Apr 2026
   * First stable v4 release. Tracks github.com/lestrrat-go/jwx/v4 v4.0.0.
   * Client.Fetch now returns typed errors for non-whitelist failures:
