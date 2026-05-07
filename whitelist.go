@@ -122,19 +122,21 @@ func (HTTPStatusError) Is(err error) bool {
 	return ok
 }
 
-// BodyTooLargeError is returned by Client.Fetch when the JWKS response
-// body exceeds the configured maximum (WithMaxBodySize, or the package
-// default). The Limit field carries the cap in bytes.
+// BodyTooLargeError is returned when a JWKS response body exceeds
+// the configured maximum (WithMaxBodySize, or the package default).
+// The Limit field carries the cap in bytes.
 //
-// Use errors.Is(err, BodyTooLargeError{}) for a type check, or
-// errors.As to extract the fields.
+// Returned by both Client.Fetch and the Cache refresh path (surfaced
+// through the cache's configured ErrorSink). Use errors.Is(err,
+// BodyTooLargeError{}) for a type check, or errors.As to extract
+// the fields.
 type BodyTooLargeError struct {
 	Limit int64
 	URL   string
 }
 
 func (e BodyTooLargeError) Error() string {
-	return fmt.Sprintf(`jwkfetch.Client.Fetch: response body for %q exceeded max size of %d bytes`, e.URL, e.Limit)
+	return fmt.Sprintf(`jwkfetch: response body for %q exceeded max size of %d bytes`, e.URL, e.Limit)
 }
 
 func (BodyTooLargeError) Is(err error) bool {
@@ -142,13 +144,16 @@ func (BodyTooLargeError) Is(err error) bool {
 	return ok
 }
 
-// TransportError wraps an HTTP transport-layer failure observed by
-// Client.Fetch: request construction, http.Client.Do, or response
-// body read. Unwrap returns the underlying stdlib error so callers
-// can still reach net.Error, *url.Error, etc.
+// TransportError wraps an HTTP transport-layer failure: request
+// construction, http.Client.Do, or response body read. Unwrap returns
+// the underlying stdlib error so callers can still reach net.Error,
+// *url.Error, etc.
 //
-// Use errors.Is(err, TransportError{}) for a type check, or errors.As
-// to extract the fields.
+// Returned by Client.Fetch for all three Op values, and by the
+// Cache refresh path for "read response body" only — the other Ops
+// are reached only on the Client.Fetch code path. Use errors.Is(err,
+// TransportError{}) for a type check, or errors.As to extract the
+// fields.
 type TransportError struct {
 	URL string
 	Op  string // "new request", "request", "read response body"
@@ -158,11 +163,11 @@ type TransportError struct {
 func (e TransportError) Error() string {
 	switch e.Op {
 	case "new request":
-		return fmt.Sprintf(`jwkfetch.Client.Fetch: failed to create new request: %s`, e.Err)
+		return fmt.Sprintf(`jwkfetch: failed to create new request: %s`, e.Err)
 	case "read response body":
-		return fmt.Sprintf(`jwkfetch.Client.Fetch: failed to read response body for %q: %s`, e.URL, e.Err)
+		return fmt.Sprintf(`jwkfetch: failed to read response body for %q: %s`, e.URL, e.Err)
 	default:
-		return fmt.Sprintf(`jwkfetch.Client.Fetch: request failed: %s`, e.Err)
+		return fmt.Sprintf(`jwkfetch: request failed: %s`, e.Err)
 	}
 }
 
@@ -177,15 +182,17 @@ func (TransportError) Is(err error) bool {
 // has succeeded. Unwrap returns the underlying jwk parse error so
 // existing errors.Is checks against jwk.ParseError() continue to work.
 //
-// Use errors.Is(err, jwkfetch.ParseError{}) for a type check, or
-// errors.As to extract the fields.
+// Returned by both Client.Fetch and the Cache refresh path (surfaced
+// through the cache's configured ErrorSink). Use errors.Is(err,
+// jwkfetch.ParseError{}) for a type check, or errors.As to extract
+// the fields.
 type ParseError struct {
 	URL string
 	Err error
 }
 
 func (e ParseError) Error() string {
-	return fmt.Sprintf(`jwkfetch.Client.Fetch: failed to parse JWK set from %q: %s`, e.URL, e.Err)
+	return fmt.Sprintf(`jwkfetch: failed to parse JWK set from %q: %s`, e.URL, e.Err)
 }
 
 func (e ParseError) Unwrap() error { return e.Err }

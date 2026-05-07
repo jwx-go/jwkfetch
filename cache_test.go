@@ -428,6 +428,95 @@ func (e *accumulateErrs) Len() int {
 	return l
 }
 
+// TestCacheTypedErrors pins the contract that the Cache refresh
+// path returns the same typed errors as Client.Fetch for the body-
+// size cap and parse failure cases. The typed errors surface via
+// the configured ErrorSink (Register itself returns a generic
+// "not ready" error from httprc; the underlying transformer error
+// arrives through the sink).
+//
+// Without typed errors, operators following the documented
+// errors.Is(err, BodyTooLargeError{}) / ParseError{} pattern get
+// true on the Client path and false on the Cache path — a silent
+// UX trap where alerts never fire.
+func TestCacheTypedErrors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("BodyTooLargeError reaches the ErrorSink", func(t *testing.T) {
+		t.Parallel()
+		body := bytes.Repeat([]byte("x"), 4096)
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write(body)
+		}))
+		defer srv.Close()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		var errSink accumulateErrs
+		c, err := jwkfetch.NewCache(ctx, httprc.NewClient(httprc.WithErrorSink(&errSink)),
+			jwkfetch.WithMaxBodySize(16),
+		)
+		require.NoError(t, err)
+		defer func() { _ = c.Shutdown(ctx) }()
+
+		// Register fails with the generic "not ready" error after the
+		// transformer keeps rejecting; the typed error lands in errSink.
+		_ = c.Register(ctx, srv.URL)
+
+		require.Eventually(t, func() bool { return errSink.Len() > 0 }, 5*time.Second, 50*time.Millisecond,
+			"the cache transformer must surface its error to the ErrorSink")
+
+		errSink.mu.RLock()
+		captured := errSink.errs[0]
+		errSink.mu.RUnlock()
+
+		require.ErrorIs(t, captured, jwkfetch.BodyTooLargeError{},
+			"Cache path must return BodyTooLargeError, matching Client.Fetch's contract")
+
+		var bodyErr jwkfetch.BodyTooLargeError
+		require.ErrorAs(t, captured, &bodyErr,
+			"errors.As must extract the typed value")
+		require.Equal(t, int64(16), bodyErr.Limit)
+		require.Equal(t, srv.URL, bodyErr.URL)
+	})
+
+	t.Run("ParseError reaches the ErrorSink", func(t *testing.T) {
+		t.Parallel()
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"not":"a-jwk-set"}`))
+		}))
+		defer srv.Close()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		var errSink accumulateErrs
+		c, err := jwkfetch.NewCache(ctx, httprc.NewClient(httprc.WithErrorSink(&errSink)))
+		require.NoError(t, err)
+		defer func() { _ = c.Shutdown(ctx) }()
+
+		_ = c.Register(ctx, srv.URL)
+
+		require.Eventually(t, func() bool { return errSink.Len() > 0 }, 5*time.Second, 50*time.Millisecond,
+			"the cache transformer must surface its parse error to the ErrorSink")
+
+		errSink.mu.RLock()
+		captured := errSink.errs[0]
+		errSink.mu.RUnlock()
+
+		require.ErrorIs(t, captured, jwkfetch.ParseError{},
+			"Cache path must return ParseError, matching Client.Fetch's contract")
+
+		var parseErr jwkfetch.ParseError
+		require.ErrorAs(t, captured, &parseErr,
+			"errors.As must extract the typed value")
+		require.Equal(t, srv.URL, parseErr.URL)
+		require.NotNil(t, parseErr.Err, "wrapped jwk.Parse error must be reachable")
+	})
+}
+
 func TestErrorSink(t *testing.T) {
 	t.Parallel()
 

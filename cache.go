@@ -68,17 +68,19 @@ func (t transformer) Transform(_ context.Context, res *http.Response) (jwk.Set, 
 		maxBody = defaultClientMaxBodySize
 	}
 
+	u := res.Request.URL.String()
+
 	buf, err := io.ReadAll(io.LimitReader(res.Body, maxBody+1))
 	if err != nil {
-		return nil, fmt.Errorf(`failed to read response body: %w`, err)
+		return nil, TransportError{URL: u, Op: "read response body", Err: err}
 	}
 	if int64(len(buf)) > maxBody {
-		return nil, fmt.Errorf(`response body at %q exceeded max size of %d bytes`, res.Request.URL.String(), maxBody)
+		return nil, BodyTooLargeError{Limit: maxBody, URL: u}
 	}
 
 	set, err := jwk.Parse(buf, t.parseOptions...)
 	if err != nil {
-		return nil, fmt.Errorf(`failed to parse JWK set at %q: %w`, res.Request.URL.String(), err)
+		return nil, ParseError{URL: u, Err: err}
 	}
 
 	return set, nil
