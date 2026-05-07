@@ -1,6 +1,21 @@
 Changes
 =======
 
+v4.0.2 7 May 2026
+  * `Cache` refresh path now returns `BodyTooLargeError`,
+    `ParseError`, and `TransportError` (matching `Client.Fetch`)
+    instead of plain `fmt.Errorf` strings. Operators following the
+    documented `errors.Is(err, BodyTooLargeError{})` pattern now
+    match errors surfaced through the cache's `ErrorSink`, closing
+    a gap where Client and Cache disagreed on the typed-error
+    contract.
+  * Document the `WithHTTPClient` trade-off: a caller-supplied
+    `*http.Client` is used as-is when no `Whitelist` is set; the
+    library does not silently impose its redirect cap or
+    HTTPS-downgrade block. Compose
+    `WithHTTPClient(WrapHTTPClientDefaults(yourClient))` to opt
+    back in.
+
 v4.0.1 28 Apr 2026
   * `WithWhitelist(nil)` now records a sticky error on the Client / Cache
     rather than silently degrading to the default permissive whitelist.
