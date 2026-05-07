@@ -175,6 +175,15 @@ func NewClient(options ...ClientOption) *Client {
 	// materialize the default here (rather than lazy-initializing
 	// inside Fetch) so that any whitelist-driven CheckRedirect
 	// wrapping can be applied exactly once at construction time.
+	//
+	// A caller-supplied *http.Client is used as-is. The library does
+	// NOT silently impose its redirect cap or HTTPS-downgrade block
+	// on it — that's the caller's explicit choice. Callers who want
+	// the defaults applied to their own client should compose:
+	//
+	//	WithHTTPClient(jwkfetch.WrapHTTPClientDefaults(myClient))
+	//
+	// See WithHTTPClient's godoc for the full trade-off.
 	if c.httpClient == nil {
 		c.httpClient = DefaultHTTPClient()
 	}
