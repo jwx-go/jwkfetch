@@ -73,8 +73,35 @@ type (
 )
 
 // WithHTTPClient configures the HTTP client used for JWKS fetches.
-// If not set, DefaultHTTPClient is used. Valid for both NewClient and
-// NewCache.
+// If not set, [DefaultHTTPClient] is used.
+//
+// A caller-supplied client is used as-is. The library does NOT
+// impose its redirect cap or HTTPS-downgrade block on it: that
+// is the caller's explicit choice. The common idiom of "I have my
+// own *http.Client (custom TLS / metrics / interceptors) plus a
+// hardcoded trusted JWKS URL so I don't need a Whitelist" therefore
+// runs without the 5-hop cap and HTTPS-downgrade block — a hostile
+// JWKS host could redirect indefinitely or to plaintext.
+//
+// Callers who want the library's defaults applied to their own
+// client should compose:
+//
+//	WithHTTPClient(jwkfetch.WrapHTTPClientDefaults(myClient))
+//
+// [WrapHTTPClientDefaults] returns a clone of the supplied client
+// with the redirect cap, HTTPS-downgrade block, and 30-second
+// timeout-if-zero installed; existing Transport, Jar, and other
+// settings are preserved.
+//
+// When a restrictive Whitelist is also configured via [WithWhitelist],
+// the library MUST wrap the supplied client's CheckRedirect to
+// enforce the whitelist on every redirect hop (a hostile JWKS host
+// must not be able to 302 into an off-allowlist URL). The wrap in
+// that path also includes the redirect cap and HTTPS-downgrade
+// block, so a Whitelist-using caller already gets them — the gap is
+// only when no Whitelist is set.
+//
+// Valid for both [NewClient] and [NewCache].
 func WithHTTPClient(c HTTPClient) GlobalFetchOption {
 	return &globalFetchOption{option.New(identHTTPClient{}, c)}
 }

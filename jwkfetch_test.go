@@ -384,3 +384,36 @@ func TestClientFetchRedirectCapAppliesWithCustomCheckRedirect(t *testing.T) {
 	require.Contains(t, err.Error(), "stopped after",
 		`error must be the library's redirect cap, not a transport-level overflow or context cancel`)
 }
+
+// TestClientFetchCustomClientUsedAsIs documents that a caller-supplied
+// *http.Client is used as-is when no Whitelist is set: the library
+// does NOT silently apply its redirect cap or HTTPS-downgrade block.
+// This is the documented WithHTTPClient contract — callers who want
+// those defaults compose WithHTTPClient(WrapHTTPClientDefaults(...)).
+//
+// The test verifies the contract by supplying a custom client whose
+// CheckRedirect returns an obviously-distinguishable sentinel error;
+// if the library wrapped the client, we'd see a different error
+// (the library's redirect cap message or the whitelist rejection).
+func TestClientFetchCustomClientUsedAsIs(t *testing.T) {
+	sentinel := errors.New("custom-client-checkredirect-sentinel")
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, srv.URL+"/next", http.StatusFound)
+	}))
+	defer srv.Close()
+
+	customClient := &http.Client{
+		Transport: srv.Client().Transport,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return sentinel
+		},
+	}
+
+	c := jwkfetch.NewClient(jwkfetch.WithHTTPClient(customClient))
+
+	_, err := c.Fetch(context.Background(), srv.URL)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), sentinel.Error(),
+		`caller's CheckRedirect must run unchanged: the library does not wrap a custom *http.Client when no Whitelist is set`)
+}
