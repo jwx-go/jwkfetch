@@ -150,7 +150,7 @@ Options that configure HTTP fetch policy work for both `NewClient` and
 - `InsecureWhitelist{}` — allow every URL (the default when `WithWhitelist` isn't passed)
 - `BlockAllWhitelist{}` — deny every URL (useful for tests, safety assertions, or intentionally-disabled code paths)
 - `NewMapWhitelist().Add(url1).Add(url2)` — fixed allow-list of exact URLs
-- `NewRegexpWhitelist().Add(pattern)` — pattern-based allow-list
+- `NewRegexpWhitelist().Add(pattern)` — pattern-based allow-list (patterns are **not** anchored for you; see [Origin-prefix or path-pattern match](#origin-prefix-or-path-pattern-match))
 - `WhitelistFunc(func(string) bool)` — custom predicate
 
 A restrictive `Whitelist` (anything other than `InsecureWhitelist{}`)

@@ -61,6 +61,17 @@ func (wl MapWhitelist) IsAllowed(u string) bool {
 }
 
 // RegexpWhitelist is a whitelist that uses regular expressions to match URLs.
+//
+// Patterns are NOT anchored for you. A URL is allowed if any pattern
+// matches anywhere in it, so a naive pattern such as `issuer\.example`
+// also matches hostile look-alikes like
+// https://issuer.example.attacker.com/jwks.json or
+// https://attacker.example/?x=issuer.example. Always anchor the start
+// with ^, escape the literal dots with \., and terminate the host with
+// a / (e.g. `^https://issuer\.example/`) so the pattern can only match
+// the origin you intend. Prefer MapWhitelist when the set of URLs is
+// known exactly; reach for RegexpWhitelist only when you genuinely need
+// patterns.
 type RegexpWhitelist struct {
 	patterns []*regexp.Regexp
 }
