@@ -3,7 +3,7 @@ module github.com/jwx-go/jwkfetch/v4
 go 1.26.0
 
 require (
-	github.com/lestrrat-go/httprc/v3 v3.0.5
+	github.com/lestrrat-go/httprc/v3 v3.0.6
 	github.com/lestrrat-go/jwx/v4 v4.0.2
 	github.com/lestrrat-go/option/v3 v3.0.0-alpha1
 	github.com/stretchr/testify v1.11.1
