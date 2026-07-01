@@ -285,7 +285,7 @@ func (c *Client) Fetch(ctx context.Context, u string) (jwk.Set, error) {
 	// Slow-trickle attacks are mitigated by context deadlines and http.Client.Timeout.
 	buf, err := io.ReadAll(io.LimitReader(res.Body, maxBodySize+1))
 	if err != nil {
-		return nil, TransportError{URL: u, Op: "read response body", Err: err}
+		return nil, TransportError{URL: u, Op: opReadResponseBody, Err: err}
 	}
 	if int64(len(buf)) > maxBodySize {
 		return nil, BodyTooLargeError{Limit: maxBodySize, URL: u}
