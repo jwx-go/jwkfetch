@@ -165,6 +165,10 @@ func (BodyTooLargeError) Is(err error) bool {
 // are reached only on the Client.Fetch code path. Use errors.Is(err,
 // TransportError{}) for a type check, or errors.As to extract the
 // fields.
+// opReadResponseBody is the TransportError.Op value used when reading
+// the HTTP response body fails.
+const opReadResponseBody = "read response body"
+
 type TransportError struct {
 	URL string
 	Op  string // "new request", "request", "read response body"
@@ -175,7 +179,7 @@ func (e TransportError) Error() string {
 	switch e.Op {
 	case "new request":
 		return fmt.Sprintf(`jwkfetch: failed to create new request: %s`, e.Err)
-	case "read response body":
+	case opReadResponseBody:
 		return fmt.Sprintf(`jwkfetch: failed to read response body for %q: %s`, e.URL, e.Err)
 	default:
 		return fmt.Sprintf(`jwkfetch: request failed: %s`, e.Err)

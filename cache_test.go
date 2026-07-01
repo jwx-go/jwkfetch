@@ -25,6 +25,15 @@ import (
 	"github.com/jwx-go/jwkfetch/v4"
 )
 
+const (
+	testKtyField         = "kty"
+	testCrvField         = "crv"
+	testAccessCountField = "accessCount"
+	testCrvP256          = "P-256"
+	testECX              = "SVqB4JcUD6lsfvqMr-OKUNUphdNn64Eay60978ZlL74"
+	testECY              = "lf0u0pMj4lGAzZix5u4Cm5CMQIgMNpkwy163wtKYVKI"
+)
+
 func generateRsaJwk(t *testing.T) jwk.Key {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -190,7 +199,7 @@ func TestCachedSet_NotReady(t *testing.T) {
 		_, cloneErr := cs.Clone()
 		require.Error(t, cloneErr, `Clone() should return an error`)
 
-		_, ok = cs.Field("kty")
+		_, ok = cs.Field(testKtyField)
 		require.False(t, ok, `Field() ok should be false`)
 
 		if m, hasMarshal := cs.(interface{ MarshalJSON() ([]byte, error) }); hasMarshal {
@@ -215,11 +224,11 @@ func TestCache_explicit_refresh_interval(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		count := accessCount.Add(1)
 		key := map[string]any{
-			"kty":         "EC",
-			"crv":         "P-256",
-			"x":           "SVqB4JcUD6lsfvqMr-OKUNUphdNn64Eay60978ZlL74",
-			"y":           "lf0u0pMj4lGAzZix5u4Cm5CMQIgMNpkwy163wtKYVKI",
-			"accessCount": count,
+			testKtyField:         "EC",
+			testCrvField:         testCrvP256,
+			"x":                  testECX,
+			"y":                  testECY,
+			testAccessCountField: count,
 		}
 		hdrs := w.Header()
 		hdrs.Set(`Content-Type`, `application/json`)
@@ -264,11 +273,11 @@ func TestCache_calculate_interval_from_cache_control(t *testing.T) {
 		count := accessCount.Add(1)
 
 		key := map[string]any{
-			"kty":         "EC",
-			"crv":         "P-256",
-			"x":           "SVqB4JcUD6lsfvqMr-OKUNUphdNn64Eay60978ZlL74",
-			"y":           "lf0u0pMj4lGAzZix5u4Cm5CMQIgMNpkwy163wtKYVKI",
-			"accessCount": count,
+			testKtyField:         "EC",
+			testCrvField:         testCrvP256,
+			"x":                  testECX,
+			"y":                  testECY,
+			testAccessCountField: count,
 		}
 		hdrs := w.Header()
 		hdrs.Set(`Content-Type`, `application/json`)
@@ -326,11 +335,11 @@ func TestCache_backoff(t *testing.T) {
 		}
 
 		key := map[string]any{
-			"kty":         "EC",
-			"crv":         "P-256",
-			"x":           "SVqB4JcUD6lsfvqMr-OKUNUphdNn64Eay60978ZlL74",
-			"y":           "lf0u0pMj4lGAzZix5u4Cm5CMQIgMNpkwy163wtKYVKI",
-			"accessCount": count,
+			testKtyField:         "EC",
+			testCrvField:         testCrvP256,
+			"x":                  testECX,
+			"y":                  testECY,
+			testAccessCountField: count,
 		}
 		hdrs.Set(`Content-Type`, `application/json`)
 

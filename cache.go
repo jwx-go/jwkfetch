@@ -72,7 +72,7 @@ func (t transformer) Transform(_ context.Context, res *http.Response) (jwk.Set, 
 
 	buf, err := io.ReadAll(io.LimitReader(res.Body, maxBody+1))
 	if err != nil {
-		return nil, TransportError{URL: u, Op: "read response body", Err: err}
+		return nil, TransportError{URL: u, Op: opReadResponseBody, Err: err}
 	}
 	if int64(len(buf)) > maxBody {
 		return nil, BodyTooLargeError{Limit: maxBody, URL: u}
