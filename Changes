@@ -1,6 +1,9 @@
 Changes
 =======
 
+v4.0.3 1 July 2026
+  * Bump `github.com/lestrrat-go/jwx/v4` to v4.1.0.
+
 v4.0.2 7 May 2026
   * `Cache` refresh path now returns `BodyTooLargeError`,
     `ParseError`, and `TransportError` (matching `Client.Fetch`)
