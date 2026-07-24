@@ -1,6 +1,9 @@
 Changes
 =======
 
+v4.0.4 24 July 2026
+  * Bump `github.com/lestrrat-go/jwx/v4` to v4.2.0.
+
 v4.0.3 1 July 2026
   * Bump `github.com/lestrrat-go/jwx/v4` to v4.1.0.
 
