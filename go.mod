@@ -1,6 +1,6 @@
 module github.com/jwx-go/jwkfetch/v4
 
-go 1.26.0
+go 1.26.10
 
 require (
 	github.com/lestrrat-go/httprc/v3 v3.0.6
